@@ -472,42 +472,62 @@
     entering = true;
 
     // Synchronous, in-tap .play() call — required for mobile autoplay-
-    // with-sound policies. Fires before anything else in this handler.
+    // with-sound policies. Fires before anything else in this handler,
+    // independent of the loop-freeze logic below.
     if (transitionVideo) {
       try { transitionVideo.currentTime = 0; } catch (err) {}
       var p = transitionVideo.play();
       if (p && p.catch) p.catch(function(){});
     }
-    // Snap the loop back to its own opening frame before freezing it — it
-    // was tapped mid-cycle, at some arbitrary point along its own drift/pan,
-    // which almost never matches transitionVideo's actual starting frame.
-    // Freezing it there (rather than wherever the tap happened to land) is
-    // what was reading as a "shift": the mismatch depended on exactly when
-    // the tap landed in the 6s loop, not on any real misalignment between
-    // the two clips.
+
+    // Everything that actually reveals the transition — deferred until the
+    // loop is confirmed frozen on its own opening frame (see below).
+    function reveal(){
+      portal.classList.add('bursting');
+
+      sizeCanvas();
+      var rect = portal.getBoundingClientRect();
+      var ox = (typeof e.clientX === 'number') ? e.clientX - rect.left : rect.width * 0.5;
+      var oy = (typeof e.clientY === 'number') ? e.clientY - rect.top : rect.height * 0.5;
+      spawnRipple(ox, oy);
+
+      var durationS = (transitionVideo && transitionVideo.duration && isFinite(transitionVideo.duration))
+        ? transitionVideo.duration
+        : FALLBACK_DURATION_S;
+      var durationMs = Math.round(durationS * 1000);
+
+      if (!reduced) {
+        var fadeLeadMs = Math.min(FADE_TO_BLACK_MS, durationMs);
+        fadeStartTimer = setTimeout(beginBlackout, Math.max(0, durationMs - fadeLeadMs));
+      }
+      fallbackTimer = setTimeout(completeTransition, durationMs + END_BUFFER_MS);
+    }
+
+    // Freeze the loop on ITS OWN opening frame — not wherever the tap
+    // happened to land mid-cycle — so the crossfade always hands off from a
+    // frame that actually matches transitionVideo's start. Setting
+    // currentTime on a playing video is an ASYNC seek: JS state
+    // (currentTime/paused) updates immediately, but the browser hasn't
+    // necessarily finished decoding/painting that frame yet — especially on
+    // mobile. Pausing first avoids any visible jump from the seek itself;
+    // 'seeked' confirms the corrected frame is actually ready to paint
+    // before reveal() starts the crossfade. Short timeout fallback in case
+    // 'seeked' never fires.
     if (portalLoop) {
-      try { portalLoop.currentTime = 0; } catch (err) {}
       portalLoop.pause();
+      var revealed = false;
+      var doReveal = function(){
+        if (revealed) return;
+        revealed = true;
+        portalLoop.removeEventListener('seeked', doReveal);
+        reveal();
+      };
+      portalLoop.addEventListener('seeked', doReveal);
+      setTimeout(doReveal, 80);
+      try { portalLoop.currentTime = 0; } catch (err) { doReveal(); }
+    } else {
+      reveal();
     }
-
-    portal.classList.add('bursting');
-
-    sizeCanvas();
-    var rect = portal.getBoundingClientRect();
-    var ox = (typeof e.clientX === 'number') ? e.clientX - rect.left : rect.width * 0.5;
-    var oy = (typeof e.clientY === 'number') ? e.clientY - rect.top : rect.height * 0.5;
-    spawnRipple(ox, oy);
-
-    var durationS = (transitionVideo && transitionVideo.duration && isFinite(transitionVideo.duration))
-      ? transitionVideo.duration
-      : FALLBACK_DURATION_S;
-    var durationMs = Math.round(durationS * 1000);
-
-    if (!reduced) {
-      var fadeLeadMs = Math.min(FADE_TO_BLACK_MS, durationMs);
-      fadeStartTimer = setTimeout(beginBlackout, Math.max(0, durationMs - fadeLeadMs));
-    }
-    fallbackTimer = setTimeout(completeTransition, durationMs + END_BUFFER_MS);
   });
 
   if (transitionVideo) {
