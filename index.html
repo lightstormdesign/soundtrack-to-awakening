@@ -149,15 +149,16 @@
     transform:translateX(-50%);
     z-index:5;
     margin:0;
-    width:90%;
+    width:94%;
     max-width:600px;
+    white-space:nowrap;
     text-align:center;
     font-family:'Cormorant', serif;
     font-style:italic;
     font-weight:700;
-    font-size:clamp(38px, 13vw, 58px);
+    font-size:clamp(26px, 8.4vw, 36px);
     line-height:1.12;
-    letter-spacing:0.09em;
+    letter-spacing:0.07em;
     text-transform:uppercase;
     color:#ffd75e;
     text-shadow:
@@ -166,6 +167,7 @@
       0 0 26px rgba(255,215,94,0.6),
       0 0 54px rgba(255,215,94,0.35);
     animation:hintPulse 2600ms ease-in-out infinite;
+    transition:opacity 500ms ease;
   }
   #scene-portal.bursting .tap-hint{ opacity:0; animation:none; }
   @keyframes hintPulse{
@@ -391,6 +393,34 @@
     blackout.style.opacity = '1';
   }
 
+  // Mobile browsers commonly collapse their address-bar chrome on the very
+  // gesture that starts the transition, which resizes the visual viewport
+  // mid-crossfade -- portal is position:fixed + inset:0, so it (and every
+  // layer inside it, all width:100%/height:100% of it) would reflow to the
+  // new size while the loop's frozen frame and the transition video's first
+  // frame are being compared, showing up as exactly the kind of shift a tap
+  // triggers. Freezing portal to its current pixel size for the duration of
+  // the transition (overriding inset:0 with an explicit top/left/width/
+  // height snapshot) makes it immune to that reflow regardless of cause.
+  // Released once we're safely on the links scene.
+  function lockStageSize(){
+    var vw = window.innerWidth, vh = window.innerHeight;
+    portal.style.top = '0px';
+    portal.style.left = '0px';
+    portal.style.right = 'auto';
+    portal.style.bottom = 'auto';
+    portal.style.width = vw + 'px';
+    portal.style.height = vh + 'px';
+  }
+  function unlockStageSize(){
+    portal.style.top = '';
+    portal.style.left = '';
+    portal.style.right = '';
+    portal.style.bottom = '';
+    portal.style.width = '';
+    portal.style.height = '';
+  }
+
   // The single real end-of-transition trigger, reached via the video's own
   // 'ended' event (expected path) or the fallback timer (safety net only).
   // Guarded so whichever fires first wins and the other is a no-op.
@@ -405,6 +435,7 @@
     blackout.style.opacity = '1';
     setTimeout(function(){
       goToLinks();
+      unlockStageSize();
       setTimeout(function(){
         blackout.style.transitionDuration = FADE_FROM_BLACK_MS + 'ms';
         blackout.style.opacity = '0';
@@ -415,6 +446,11 @@
   portal.addEventListener('click', function(e){
     if (entering) return;
     entering = true;
+
+    // First thing, before anything else can run: freeze the stage's pixel
+    // size against mid-transition browser-chrome reflow (see
+    // lockStageSize's comment above).
+    lockStageSize();
 
     // Synchronous, in-tap .play() calls — required for mobile autoplay-
     // with-sound policies. Fire before anything else in this handler,
