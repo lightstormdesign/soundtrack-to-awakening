@@ -218,179 +218,91 @@
     50%{ opacity:1; }
   }
 
-  /* Scene 2: threshold */
-  #scene-threshold{
-    background:var(--surface);
+  /* Scene 2: links — deliberately dark regardless of light/dark mode, so
+     the reveal out of the blackout stays in the same register: premium,
+     mysterious, unlit except for the gold. */
+  #scene-links{
     justify-content:center;
+    gap:34px;
     padding:34px 26px;
-    gap:22px;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(232,185,106,0.10) 0%, transparent 60%),
+      #0a0e09;
   }
-  .threshold-copy h2{
-    font-family:'Cormorant', serif;
-    font-style:italic;
-    font-weight:500;
-    font-size:24px;
-    margin:0 0 8px;
-    color:var(--ink);
-  }
-  .threshold-copy p{
-    font-size:12.5px;
-    line-height:1.55;
-    color:var(--ink-soft);
-    margin:0;
-    max-width:260px;
-  }
-  .vessels{
-    display:flex;
-    gap:18px;
-    align-items:flex-end;
-  }
-  .vessel{
-    background:none;
-    border:none;
-    font-family:'Jost', sans-serif;
-    cursor:pointer;
+  .links-mark{
     display:flex;
     flex-direction:column;
     align-items:center;
-    gap:10px;
-    padding:6px;
-    color:var(--ink);
+    gap:8px;
   }
-  .vial{
-    width:34px; height:64px;
-    border-radius:10px 10px 16px 16px;
-    border:1.5px solid var(--line);
-    position:relative;
-    overflow:hidden;
-    background:var(--surface);
-  }
-  .vial::after{
-    content:'';
-    position:absolute;
-    left:0; right:0; bottom:0;
-    height:60%;
-    background:var(--fill, var(--mist));
-  }
-  .vessel.wake .vial{ box-shadow:0 0 18px 2px var(--gold-glow); }
-  .vessel.wake .vial::after{ --fill: linear-gradient(to top, var(--gold-bright), var(--gold-glow)); background:var(--fill); }
-  .vessel.sleep .vial::after{ --fill: var(--moss); opacity:0.55; }
-  .vessel-label{
-    font-size:13px;
-    font-weight:500;
-  }
-  .vessel-sub{
+  .links-mark .eyebrow{
     font-family:'Space Mono', monospace;
     font-size:9.5px;
-    letter-spacing:0.08em;
+    letter-spacing:0.32em;
     text-transform:uppercase;
-    color:var(--mist);
+    color:rgba(143,160,137,0.75);
   }
-
-  .decline-note{
-    font-size:12px;
-    color:var(--ink-soft);
-    max-width:260px;
-    line-height:1.5;
-    display:none;
-  }
-  .decline-note.show{ display:block; animation:fadeUp 500ms ease both; }
-  .decline-note button{
-    margin-top:10px;
-    background:var(--gold-bright);
-    color:#1e1607;
-    border:none;
-    font-family:'Space Mono', monospace;
-    font-size:10.5px;
-    letter-spacing:0.1em;
-    text-transform:uppercase;
-    padding:9px 16px;
-    border-radius:20px;
-    cursor:pointer;
-  }
-  @keyframes fadeUp{
-    from{ opacity:0; transform:translateY(6px); }
-    to{ opacity:1; transform:translateY(0); }
-  }
-
-  /* Scene 3: frequencies */
-  #scene-frequencies{
-    background:var(--surface);
-    justify-content:flex-start;
-    padding:30px 22px 26px;
-    gap:16px;
-    overflow-y:auto;
-  }
-  .freq-art{
-    width:96px; height:96px;
-    border-radius:16px;
-    background:
-      radial-gradient(circle at 30% 25%, var(--gold-glow), transparent 55%),
-      linear-gradient(160deg, var(--moss), #1e2a1c 80%);
-    box-shadow:0 10px 26px -10px var(--shadow);
-    margin-top:6px;
-  }
-  .freq-heading{ display:flex; flex-direction:column; gap:4px; align-items:center; }
-  .freq-heading .eyebrow{
-    font-family:'Space Mono', monospace;
-    font-size:10px;
-    letter-spacing:0.2em;
-    text-transform:uppercase;
-    color:var(--mist);
-  }
-  .freq-heading h2{
+  .links-mark h2{
     font-family:'Cormorant', serif;
     font-style:italic;
     font-weight:500;
-    font-size:22px;
+    font-size:26px;
     margin:0;
-    color:var(--ink);
+    color:#f1ead9;
+    text-wrap:balance;
   }
-  .platform-list{
+  .links-list{
     width:100%;
     max-width:280px;
     display:flex;
     flex-direction:column;
-    gap:9px;
-    margin-top:4px;
+    gap:12px;
   }
   .platform-row{
     display:flex;
     align-items:center;
-    justify-content:space-between;
-    gap:12px;
-    padding:11px 14px;
-    border:1px solid var(--line);
-    border-radius:12px;
-    background:var(--bg);
+    gap:14px;
+    padding:15px 20px;
+    border-radius:999px;
+    border:1px solid rgba(241,234,217,0.14);
+    background:rgba(241,234,217,0.04);
+    backdrop-filter:blur(6px);
     text-decoration:none;
-    color:var(--ink);
-    transition:border-color 160ms ease, transform 160ms ease;
+    color:#f1ead9;
+    transition:border-color 220ms ease, background 220ms ease, transform 220ms ease, box-shadow 220ms ease;
   }
   .platform-row:hover, .platform-row:focus-visible{
-    border-color:var(--gold-bright);
+    border-color:rgba(232,185,106,0.55);
+    background:rgba(232,185,106,0.08);
     transform:translateY(-1px);
+    box-shadow:0 8px 24px -12px rgba(232,185,106,0.35);
     outline:none;
   }
-  .platform-row .pname{ font-size:13.5px; font-weight:500; }
-  .platform-row .phz{
-    font-family:'Space Mono', monospace;
-    font-size:10.5px;
-    color:var(--mist);
-    letter-spacing:0.04em;
+  .platform-row .picon{
+    flex:none;
+    width:19px; height:19px;
+    color:#e8b96a;
+    opacity:0.92;
   }
-  .freq-footnote{
+  .platform-row .picon svg{ width:100%; height:100%; display:block; }
+  .platform-row .pname{
+    font-family:'Jost', sans-serif;
+    font-size:13.5px;
+    font-weight:500;
+    letter-spacing:0.02em;
+  }
+  .links-footnote{
     font-family:'Space Mono', monospace;
-    font-size:9.5px;
-    letter-spacing:0.03em;
-    color:var(--mist);
+    font-size:9px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:rgba(143,160,137,0.6);
     text-align:center;
-    margin-top:4px;
     max-width:260px;
   }
 
   @media (prefers-reduced-motion: reduce){
-    .portal-flash, .tap-hint{ animation:none !important; }
+    .tap-hint{ animation:none !important; }
   }
 
   .caption{
@@ -410,7 +322,7 @@
 <div class="masthead">
   <div class="eyebrow">Portal Prototype</div>
   <h1>Soundtrack to Awakening</h1>
-  <p>Tap the hollow — the transition plays through once, in full (with sound), then opens onto the threshold.</p>
+  <p>Tap the hollow — the transition plays through once, in full (with sound), fades to black, then opens onto the listen links.</p>
 </div>
 
 <div class="device">
@@ -432,44 +344,26 @@
       <div class="tap-hint">Tap to Awaken</div>
     </div>
 
-    <div class="scene" id="scene-threshold">
-      <div class="threshold-copy">
-        <h2>You found the hollow.</h2>
-        <p>Down there the hour keeps moving without you. There are two ways back up.</p>
-      </div>
-      <div class="vessels">
-        <button class="vessel sleep" id="btnSleep">
-          <div class="vial"></div>
-          <div class="vessel-label">Stay Asleep</div>
-          <div class="vessel-sub">the hour waits</div>
-        </button>
-        <button class="vessel wake" id="btnWake">
-          <div class="vial"></div>
-          <div class="vessel-label">Wake Up</div>
-          <div class="vessel-sub">the hour is now</div>
-        </button>
-      </div>
-      <div class="decline-note" id="declineNote">
-        The hollow seals over with root and moss. It will still be here.
-        <br><button id="btnReconsider">actually — wake me up</button>
-      </div>
-    </div>
-
-    <div class="scene" id="scene-frequencies">
-      <div class="freq-art"></div>
-      <div class="freq-heading">
-        <div class="eyebrow">now streaming</div>
+    <div class="scene" id="scene-links">
+      <div class="links-mark">
+        <div class="eyebrow">Now Streaming</div>
         <h2>Soundtrack to Awakening</h2>
       </div>
-      <div class="platform-list">
-        <a class="platform-row" href="#" data-platform="spotify"><span class="pname">Spotify</span><span class="phz">396 Hz</span></a>
-        <a class="platform-row" href="#" data-platform="apple"><span class="pname">Apple Music</span><span class="phz">417 Hz</span></a>
-        <a class="platform-row" href="#" data-platform="youtube"><span class="pname">YouTube Music</span><span class="phz">528 Hz</span></a>
-        <a class="platform-row" href="#" data-platform="amazon"><span class="pname">Amazon Music</span><span class="phz">639 Hz</span></a>
-        <a class="platform-row" href="#" data-platform="soundcloud"><span class="pname">SoundCloud</span><span class="phz">741 Hz</span></a>
-        <a class="platform-row" href="#" data-platform="tidal"><span class="pname">Tidal</span><span class="phz">852 Hz</span></a>
+      <div class="links-list">
+        <a class="platform-row" href="#" data-platform="spotify">
+          <span class="picon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.25" stroke="currentColor" stroke-width="1.4"/><path d="M7 10.2c3.2-.8 6.8-.5 9.6 1.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M7.6 13.1c2.7-.6 5.6-.4 8 .9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M8.2 16c2.1-.4 4.3-.3 6.1.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+          <span class="pname">Spotify</span>
+        </a>
+        <a class="platform-row" href="#" data-platform="apple">
+          <span class="picon"><svg viewBox="0 0 24 24" fill="none"><path d="M15.6 3.5c.1 1-.3 1.9-.9 2.6-.6.7-1.6 1.3-2.6 1.2-.1-1 .4-2 .9-2.6.6-.7 1.6-1.2 2.6-1.2Z" fill="currentColor"/><path d="M18.9 17.2c-.4.9-.6 1.3-1.1 2.1-.7 1.1-1.7 2.5-2.9 2.5-1.1 0-1.4-.7-2.9-.7s-1.9.7-2.9.7c-1.2 0-2.1-1.3-2.8-2.4-1.9-2.9-2.1-6.3-.9-8.1.8-1.3 2.2-2.1 3.5-2.1 1.3 0 2.1.7 3.2.7 1 0 1.7-.7 3.2-.7 1.1 0 2.3.6 3.1 1.6-2.7 1.5-2.3 5.4.5 6.4Z" fill="currentColor"/></svg></span>
+          <span class="pname">Apple Music</span>
+        </a>
+        <a class="platform-row" href="#" data-platform="youtube">
+          <span class="picon"><svg viewBox="0 0 24 24" fill="none"><rect x="2.75" y="6" width="18.5" height="12" rx="4" stroke="currentColor" stroke-width="1.4"/><path d="M10.3 9.6v4.8l4.4-2.4-4.4-2.4Z" fill="currentColor"/></svg></span>
+          <span class="pname">YouTube</span>
+        </a>
       </div>
-      <div class="freq-footnote">choose a frequency — each opens the album where you already listen</div>
+      <div class="links-footnote">choose where you already listen</div>
     </div>
 
     <div class="blackout" id="blackout"></div>
@@ -477,13 +371,12 @@
   </div>
 </div>
 
-<div class="caption">This is a click-through mock of the state machine only — <b>tap → full transition play (with audio) → threshold → platform picker</b>. Timings and copy are all easy to swap as the release comes together.</div>
+<div class="caption">This is a click-through mock of the state machine only — <b>tap → full transition play (with audio) → fade to black → listen links</b>. Timings, copy, and the real streaming URLs are all easy to swap as the release comes together.</div>
 
 <script>
 (function(){
   var portal = document.getElementById('scene-portal');
-  var threshold = document.getElementById('scene-threshold');
-  var frequencies = document.getElementById('scene-frequencies');
+  var links = document.getElementById('scene-links');
   var canvas = document.getElementById('burstCanvas');
   var ctx = canvas.getContext('2d');
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -563,9 +456,9 @@
     rippleRaf = requestAnimationFrame(tick);
   }
 
-  function goToThreshold(){
+  function goToLinks(){
     portal.classList.remove('active');
-    threshold.classList.add('active');
+    links.classList.add('active');
   }
 
   // Known length of the transition clip (~7.07s) — used only as a failsafe
@@ -606,7 +499,7 @@
     blackout.style.transitionDuration = '0ms';
     blackout.style.opacity = '1';
     setTimeout(function(){
-      goToThreshold();
+      goToLinks();
       setTimeout(function(){
         blackout.style.transitionDuration = FADE_FROM_BLACK_MS + 'ms';
         blackout.style.opacity = '0';
@@ -654,19 +547,6 @@
     });
   }
 
-  document.getElementById('btnWake').addEventListener('click', function(){
-    threshold.classList.remove('active');
-    frequencies.classList.add('active');
-  });
-
-  document.getElementById('btnSleep').addEventListener('click', function(){
-    document.getElementById('declineNote').classList.add('show');
-  });
-
-  document.getElementById('btnReconsider').addEventListener('click', function(){
-    threshold.classList.remove('active');
-    frequencies.classList.add('active');
-  });
 
   sizeCanvas();
 })();
