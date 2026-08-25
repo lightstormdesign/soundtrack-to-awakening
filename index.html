@@ -177,21 +177,16 @@
     background:linear-gradient(to bottom, var(--scrim-top) 0%, transparent 38%, var(--scrim-bottom) 100%);
     pointer-events:none;
   }
-  .portal-flash{
+  /* Fades to solid black as the transition video finishes (timed to land
+     exactly on its last frame), covers the cut to the Threshold scene, then
+     fades back out to reveal it. Sits above every layer in both scenes. */
+  .blackout{
     position:absolute; inset:0;
-    z-index:4;
-    background:radial-gradient(circle at 60% 58%, var(--gold-glow) 0%, rgba(232,185,106,0.4) 22%, transparent 60%);
+    z-index:45;
+    background:#000;
     opacity:0;
     pointer-events:none;
-    mix-blend-mode:screen;
-  }
-  #scene-portal.revealing .portal-flash{
-    animation:flashPulse 900ms ease-out forwards;
-  }
-  @keyframes flashPulse{
-    0%{ opacity:0; }
-    35%{ opacity:0.8; }
-    100%{ opacity:0; }
+    transition:opacity 900ms ease;
   }
   #burstCanvas{
     position:absolute; inset:0;
@@ -433,7 +428,6 @@
       </video>
 
       <div class="portal-scrim"></div>
-      <div class="portal-flash"></div>
       <canvas id="burstCanvas"></canvas>
       <div class="tap-hint">Tap to Awaken</div>
     </div>
@@ -477,6 +471,8 @@
       </div>
       <div class="freq-footnote">choose a frequency — each opens the album where you already listen</div>
     </div>
+
+    <div class="blackout" id="blackout"></div>
 
   </div>
 </div>
@@ -576,12 +572,46 @@
   // if 'ended' never fires (autoplay-with-sound blocked, decode error,
   // etc.), so a tap can never leave the visitor stuck on a frozen frame.
   var FALLBACK_DURATION_S = 7.1;
+  var END_BUFFER_MS = 400; // fallback's grace period past the expected end
   var entering = false;
+  var endHandled = false;
   var fallbackTimer = null;
+  var fadeStartTimer = null;
+  var blackout = document.getElementById('blackout');
 
-  function finishTransition(){
+  // Fade to black timed to land on the transition's last frame (started
+  // pre-emptively, based on the clip's own reported duration — this is
+  // cosmetic and independent of whichever event actually ends the phase
+  // below), hold a beat, swap scenes underneath the black so the cut is
+  // hidden, then fade back out to reveal the Threshold.
+  var FADE_TO_BLACK_MS = 900;
+  var HOLD_BLACK_MS = 250;
+  var FADE_FROM_BLACK_MS = 700;
+
+  function beginBlackout(){
+    blackout.style.transitionDuration = FADE_TO_BLACK_MS + 'ms';
+    blackout.style.opacity = '1';
+  }
+
+  // The single real end-of-transition trigger, reached via the video's own
+  // 'ended' event (expected path) or the fallback timer (safety net only).
+  // Guarded so whichever fires first wins and the other is a no-op.
+  function completeTransition(){
+    if (endHandled) return;
+    endHandled = true;
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-    goToThreshold();
+    if (fadeStartTimer) { clearTimeout(fadeStartTimer); fadeStartTimer = null; }
+    // Snap to fully black in case the pre-emptive fade above hasn't
+    // finished yet (e.g. the fallback fired because 'ended' never did).
+    blackout.style.transitionDuration = '0ms';
+    blackout.style.opacity = '1';
+    setTimeout(function(){
+      goToThreshold();
+      setTimeout(function(){
+        blackout.style.transitionDuration = FADE_FROM_BLACK_MS + 'ms';
+        blackout.style.opacity = '0';
+      }, HOLD_BLACK_MS);
+    }, 20);
   }
 
   portal.addEventListener('click', function(e){
@@ -608,16 +638,19 @@
     var durationS = (transitionVideo && transitionVideo.duration && isFinite(transitionVideo.duration))
       ? transitionVideo.duration
       : FALLBACK_DURATION_S;
-    var fallbackMs = reduced ? 200 : Math.round(durationS * 1000) + 400;
+    var durationMs = Math.round(durationS * 1000);
 
-    fallbackTimer = setTimeout(finishTransition, fallbackMs);
-    setTimeout(function(){ portal.classList.add('revealing'); }, Math.max(0, fallbackMs - 900));
+    if (!reduced) {
+      var fadeLeadMs = Math.min(FADE_TO_BLACK_MS, durationMs);
+      fadeStartTimer = setTimeout(beginBlackout, Math.max(0, durationMs - fadeLeadMs));
+    }
+    fallbackTimer = setTimeout(completeTransition, durationMs + END_BUFFER_MS);
   });
 
   if (transitionVideo) {
     transitionVideo.addEventListener('ended', function(){
       if (!entering) return;
-      finishTransition();
+      completeTransition();
     });
   }
 
