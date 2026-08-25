@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="data:,">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500&family=Jost:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500;1,700&family=Jost:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
   :root{
     --bg:#f5efe1;
@@ -64,16 +64,18 @@
   html,body{margin:0;padding:0;}
   html{
     background:#000;
-    height:100%;
-    height:100dvh;
   }
+  /* Pinned to the viewport purely via inset:0 on a fixed element -- no
+     vh/dvh height math at all, so there's no dependency on how any given
+     mobile browser resolves dynamic-toolbar viewport units. This is what
+     actually guarantees zero gap top/bottom, vs. also setting an explicit
+     height alongside inset:0 (over-constrained: the two can disagree by a
+     px or more depending on the browser's dvh rounding, which is exactly
+     what shows up as a sliver of background above/below the video). */
   body{
     background:#000;
     color:var(--ink);
     font-family:'Jost', 'Trebuchet MS', sans-serif;
-    width:100%;
-    height:100vh;
-    height:100dvh;
     overflow:hidden;
     position:fixed;
     inset:0;
@@ -82,8 +84,6 @@
   /* ---- scenes: true full-screen mobile viewport ---- */
   .scene{
     position:fixed; inset:0;
-    width:100%;
-    height:100%;
     display:flex;
     flex-direction:column;
     align-items:center;
@@ -149,15 +149,22 @@
     transform:translateX(-50%);
     z-index:5;
     margin:0;
-    white-space:nowrap;
+    width:90%;
+    max-width:600px;
+    text-align:center;
     font-family:'Cormorant', serif;
     font-style:italic;
-    font-weight:500;
-    font-size:15px;
-    letter-spacing:0.32em;
+    font-weight:700;
+    font-size:clamp(38px, 13vw, 58px);
+    line-height:1.12;
+    letter-spacing:0.09em;
     text-transform:uppercase;
-    color:#f6d48a;
-    text-shadow:0 0 14px rgba(246,212,138,0.55), 0 2px 6px rgba(0,0,0,0.8), 0 0 24px rgba(0,0,0,0.6);
+    color:#ffd75e;
+    text-shadow:
+      0 4px 10px rgba(0,0,0,0.95),
+      0 10px 32px rgba(0,0,0,0.85),
+      0 0 26px rgba(255,215,94,0.6),
+      0 0 54px rgba(255,215,94,0.35);
     animation:hintPulse 2600ms ease-in-out infinite;
   }
   #scene-portal.bursting .tap-hint{ opacity:0; animation:none; }
@@ -241,6 +248,9 @@
   <video id="transitionVideo" class="layer-img" playsinline preload="auto" poster="assets/transition-poster.jpg">
     <source src="assets/transition.mp4" type="video/mp4">
   </video>
+  <audio id="transitionAudio" preload="auto">
+    <source src="assets/transition-audio.mp3" type="audio/mpeg">
+  </audio>
 
   <div class="portal-scrim"></div>
   <canvas id="burstCanvas"></canvas>
@@ -277,6 +287,7 @@
   var portalLoop = document.getElementById('portalLoop');
   var portalLoopFallback = document.getElementById('portalLoopFallback');
   var transitionVideo = document.getElementById('transitionVideo');
+  var transitionAudio = document.getElementById('transitionAudio');
 
   // Ambient loop: autoplay-blocked (iOS Low Power Mode, data saver, etc.) ->
   // fall back to the static still permanently for this load. Same pattern
@@ -301,7 +312,8 @@
 
   // Small spark burst right at the tap point — a touch acknowledgment only.
   // The actual transition is transitionVideo playing through once, full
-  // length, with its own audio.
+  // length, with transitionAudio started alongside it (see the click
+  // handler below) and left to play out independently.
   var ripples = [];
   var rippleRaf = null;
   function spawnRipple(originX, originY){
@@ -404,13 +416,26 @@
     if (entering) return;
     entering = true;
 
-    // Synchronous, in-tap .play() call — required for mobile autoplay-
-    // with-sound policies. Fires before anything else in this handler,
-    // independent of the loop-freeze logic below.
+    // Synchronous, in-tap .play() calls — required for mobile autoplay-
+    // with-sound policies. Fire before anything else in this handler,
+    // independent of the loop-freeze logic below. Video (silent, visuals
+    // only) and audio are deliberately separate elements/files: the video's
+    // own duration only ever drives the VISUAL fade-to-black timing below,
+    // while the audio is started alongside it here and then left alone --
+    // never paused or cut off when the scene switches to the links screen.
+    // That means a longer audio file (e.g. one with music that keeps
+    // playing past where the visual clip ends) just works with no code
+    // changes: drop in a new assets/transition-audio.mp3 and it plays to
+    // its own natural end regardless of how long the video is.
     if (transitionVideo) {
       try { transitionVideo.currentTime = 0; } catch (err) {}
       var p = transitionVideo.play();
       if (p && p.catch) p.catch(function(){});
+    }
+    if (transitionAudio) {
+      try { transitionAudio.currentTime = 0; } catch (err) {}
+      var pa = transitionAudio.play();
+      if (pa && pa.catch) pa.catch(function(){});
     }
 
     // Everything that actually reveals the transition — deferred until the
