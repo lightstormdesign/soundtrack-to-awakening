@@ -478,7 +478,17 @@
       var p = transitionVideo.play();
       if (p && p.catch) p.catch(function(){});
     }
-    if (portalLoop) portalLoop.pause();
+    // Snap the loop back to its own opening frame before freezing it — it
+    // was tapped mid-cycle, at some arbitrary point along its own drift/pan,
+    // which almost never matches transitionVideo's actual starting frame.
+    // Freezing it there (rather than wherever the tap happened to land) is
+    // what was reading as a "shift": the mismatch depended on exactly when
+    // the tap landed in the 6s loop, not on any real misalignment between
+    // the two clips.
+    if (portalLoop) {
+      try { portalLoop.currentTime = 0; } catch (err) {}
+      portalLoop.pause();
+    }
 
     portal.classList.add('bursting');
 
