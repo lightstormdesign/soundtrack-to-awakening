@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="data:,">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500;1,700&family=Jost:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500;1,700&family=Jost:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
   :root{
     --bg:#f5efe1;
@@ -124,12 +124,21 @@
      gentler crossfade (vs. an instant cut) also helps mask the last sliver
      of any residual pixel misalignment between the loop's and the
      transition's independently-generated content -- a slow dissolve reads
-     as intentional, a hard cut makes even a couple of px read as a jump. */
+     as intentional, a hard cut makes even a couple of px read as a jump.
+     The shift wasn't just horizontal offset: measured directly (rendering
+     both videos through this exact object-fit/object-position math on a
+     canvas and searching jointly over scale AND position against the
+     loop's actual frame) showed transition's content is very slightly
+     more "zoomed in" than the loop's -- a real, sharply-defined minimum at
+     ~99.5% scale + 54% position, not the flat plateaus position-only
+     tuning kept finding. transform-origin defaults to the element's own
+     center, which is what this math assumes. */
   #transitionVideo{
     z-index:3;
     opacity:0;
     transition:opacity 750ms ease;
-    object-position:56% 42%;
+    object-position:54% 42%;
+    transform:scale(0.995);
   }
   #scene-portal.bursting #transitionVideo{ opacity:1; }
   #scene-portal.bursting #portalLoop,
@@ -169,12 +178,12 @@
     max-width:600px;
     white-space:nowrap;
     text-align:center;
-    font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Jost', 'Helvetica Neue', sans-serif;
+    font-family:'Cinzel', 'Cormorant', serif;
     font-style:normal;
-    font-weight:600;
-    font-size:clamp(21px, 6.7vw, 29px);
+    font-weight:500;
+    font-size:clamp(18px, 5.7vw, 25px);
     line-height:1.2;
-    letter-spacing:0.19em;
+    letter-spacing:0.17em;
     text-transform:uppercase;
     color:#ffd75e;
     text-shadow:
