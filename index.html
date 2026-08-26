@@ -106,22 +106,38 @@
     object-fit:cover;
     object-position:58% 42%;
   }
-  /* Layer 0: ambient portal loop (muted, always looping pre-tap) */
-  #portalLoop, #portalLoopFallback{ z-index:1; }
-  /* Layer 1: the real transition — plays once, in full, on tap */
-  #transitionVideo{
+  /* Layer 0: the fallback still is the base layer, always visible from
+     first paint (no JS, no load event needed) -- a cold load on a slow
+     connection never shows raw black while the loop buffers. The loop
+     video sits above it, invisible until it actually fires 'playing'
+     (real decoded frames on screen, not just "play() was called"), then
+     fades in over the still. If autoplay is blocked entirely the video
+     stays hidden and the still just remains the permanent background. */
+  #portalLoopFallback{ z-index:1; }
+  #portalLoop{
     z-index:2;
     opacity:0;
-    transition:opacity 400ms ease;
+    transition:opacity 600ms ease;
+  }
+  #portalLoop.loop-ready{ opacity:1; }
+  /* Layer 1: the real transition — plays once, in full, on tap. A longer,
+     gentler crossfade (vs. an instant cut) also helps mask the last sliver
+     of any residual pixel misalignment between the loop's and the
+     transition's independently-generated content -- a slow dissolve reads
+     as intentional, a hard cut makes even a couple of px read as a jump. */
+  #transitionVideo{
+    z-index:3;
+    opacity:0;
+    transition:opacity 750ms ease;
     object-position:56% 42%;
   }
   #scene-portal.bursting #transitionVideo{ opacity:1; }
   #scene-portal.bursting #portalLoop,
-  #scene-portal.bursting #portalLoopFallback{ opacity:0; transition:opacity 500ms ease; }
+  #scene-portal.bursting #portalLoopFallback{ opacity:0; transition:opacity 750ms ease; }
 
   .portal-scrim{
     position:absolute; inset:0;
-    z-index:3;
+    z-index:4;
     background:linear-gradient(to bottom, var(--scrim-top) 0%, transparent 38%, var(--scrim-bottom) 100%);
     pointer-events:none;
   }
@@ -144,7 +160,7 @@
   }
   .tap-hint{
     position:absolute;
-    top:calc(env(safe-area-inset-top, 0px) + 12%);
+    top:calc(env(safe-area-inset-top, 0px) + 19%);
     left:50%;
     transform:translateX(-50%);
     z-index:5;
@@ -153,19 +169,20 @@
     max-width:600px;
     white-space:nowrap;
     text-align:center;
-    font-family:'Cormorant', serif;
-    font-style:italic;
-    font-weight:700;
-    font-size:clamp(26px, 8.4vw, 36px);
-    line-height:1.12;
-    letter-spacing:0.07em;
+    font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Jost', 'Helvetica Neue', sans-serif;
+    font-style:normal;
+    font-weight:600;
+    font-size:clamp(21px, 6.7vw, 29px);
+    line-height:1.2;
+    letter-spacing:0.19em;
     text-transform:uppercase;
     color:#ffd75e;
     text-shadow:
-      0 4px 10px rgba(0,0,0,0.95),
-      0 10px 32px rgba(0,0,0,0.85),
-      0 0 26px rgba(255,215,94,0.6),
-      0 0 54px rgba(255,215,94,0.35);
+      0 6px 16px rgba(0,0,0,0.98),
+      0 16px 44px rgba(0,0,0,0.92),
+      0 1px 2px rgba(0,0,0,1),
+      0 0 22px rgba(255,215,94,0.55),
+      0 0 46px rgba(255,215,94,0.3);
     animation:hintPulse 2600ms ease-in-out infinite;
     transition:opacity 500ms ease;
   }
@@ -245,14 +262,11 @@
   <video id="portalLoop" class="layer-img" autoplay muted loop playsinline preload="auto" poster="assets/fallback.jpg">
     <source src="assets/portal-loop.mp4" type="video/mp4">
   </video>
-  <img id="portalLoopFallback" class="layer-img" src="assets/fallback.jpg" alt="" style="display:none">
+  <img id="portalLoopFallback" class="layer-img" src="assets/fallback.jpg" alt="">
 
   <video id="transitionVideo" class="layer-img" playsinline preload="auto" poster="assets/transition-poster.jpg">
     <source src="assets/transition.mp4" type="video/mp4">
   </video>
-  <audio id="transitionAudio" preload="auto">
-    <source src="assets/transition-audio.mp3" type="audio/mpeg">
-  </audio>
 
   <div class="portal-scrim"></div>
   <canvas id="burstCanvas"></canvas>
@@ -287,21 +301,22 @@
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var portalLoop = document.getElementById('portalLoop');
-  var portalLoopFallback = document.getElementById('portalLoopFallback');
   var transitionVideo = document.getElementById('transitionVideo');
-  var transitionAudio = document.getElementById('transitionAudio');
 
-  // Ambient loop: autoplay-blocked (iOS Low Power Mode, data saver, etc.) ->
-  // fall back to the static still permanently for this load. Same pattern
-  // as LightStorm's MobilePortalGate portal-loop layer.
+  // The fallback still (see its CSS comment) is the permanent base layer
+  // and needs no JS at all. The loop video only ever needs to reveal
+  // itself once it's actually rendering frames -- 'playing' is the event
+  // for that, not 'canplay'/'loadeddata', which can fire before a frame
+  // has really been decoded and painted on some mobile browsers. If
+  // autoplay is blocked outright (iOS Low Power Mode, data saver, etc.)
+  // or the source errors, the video just never gets 'loop-ready' and the
+  // still quietly remains the permanent background for this load.
   if (portalLoop) {
-    var showLoopFallback = function(){
-      portalLoop.style.display = 'none';
-      portalLoopFallback.style.display = 'block';
-    };
-    portalLoop.addEventListener('error', showLoopFallback);
+    portalLoop.addEventListener('playing', function(){
+      portalLoop.classList.add('loop-ready');
+    });
     var loopAttempt = portalLoop.play();
-    if (loopAttempt && loopAttempt.catch) loopAttempt.catch(showLoopFallback);
+    if (loopAttempt && loopAttempt.catch) loopAttempt.catch(function(){});
   }
 
   function sizeCanvas(){
@@ -314,8 +329,14 @@
 
   // Small spark burst right at the tap point — a touch acknowledgment only.
   // The actual transition is transitionVideo playing through once, full
-  // length, with transitionAudio started alongside it (see the click
-  // handler below) and left to play out independently.
+  // length, with its own embedded audio. (Audio was briefly split into a
+  // separate element/file so a longer replacement track could outlast the
+  // video, but that introduced its own failure mode: the two elements'
+  // play() calls aren't perfectly synchronized, so on some devices/loads
+  // they'd drift and the audio could end up finishing early relative to
+  // the video. Merged back into one file/element for a single reliable
+  // playback clock; revisit decoupling only alongside real synchronization
+  // handling if a longer audio track is needed later.)
   var ripples = [];
   var rippleRaf = null;
   function spawnRipple(originX, originY){
@@ -452,26 +473,13 @@
     // lockStageSize's comment above).
     lockStageSize();
 
-    // Synchronous, in-tap .play() calls — required for mobile autoplay-
-    // with-sound policies. Fire before anything else in this handler,
-    // independent of the loop-freeze logic below. Video (silent, visuals
-    // only) and audio are deliberately separate elements/files: the video's
-    // own duration only ever drives the VISUAL fade-to-black timing below,
-    // while the audio is started alongside it here and then left alone --
-    // never paused or cut off when the scene switches to the links screen.
-    // That means a longer audio file (e.g. one with music that keeps
-    // playing past where the visual clip ends) just works with no code
-    // changes: drop in a new assets/transition-audio.mp3 and it plays to
-    // its own natural end regardless of how long the video is.
+    // Synchronous, in-tap .play() call — required for mobile autoplay-
+    // with-sound policies. Fires before anything else in this handler,
+    // independent of the loop-freeze logic below.
     if (transitionVideo) {
       try { transitionVideo.currentTime = 0; } catch (err) {}
       var p = transitionVideo.play();
       if (p && p.catch) p.catch(function(){});
-    }
-    if (transitionAudio) {
-      try { transitionAudio.currentTime = 0; } catch (err) {}
-      var pa = transitionAudio.play();
-      if (pa && pa.catch) pa.catch(function(){});
     }
 
     // Everything that actually reveals the transition — deferred until the
