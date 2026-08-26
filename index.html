@@ -265,6 +265,126 @@
     line-height:1.6;
   }
   .caption b{ color:var(--ink-soft); font-weight:700; }
+
+  /* ---- return-from-platform popup ---- */
+  #returnPopup{
+    position:fixed; inset:0;
+    z-index:200;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:rgba(6,9,5,0.72);
+    backdrop-filter:blur(6px);
+    opacity:0;
+    visibility:hidden;
+    transition:opacity 320ms ease, visibility 0s linear 320ms;
+  }
+  #returnPopup.active{
+    opacity:1;
+    visibility:visible;
+    transition:opacity 320ms ease, visibility 0s linear 0s;
+  }
+  .popup-card{
+    position:relative;
+    width:100%;
+    max-width:340px;
+    background:#12160f;
+    border:1px solid rgba(232,185,106,0.4);
+    border-radius:22px;
+    padding:34px 26px 26px;
+    text-align:center;
+    box-shadow:0 20px 60px -20px rgba(0,0,0,0.8), 0 0 40px rgba(232,185,106,0.1);
+    transform:translateY(10px) scale(0.98);
+    transition:transform 320ms ease;
+  }
+  #returnPopup.active .popup-card{ transform:translateY(0) scale(1); }
+  .popup-close{
+    position:absolute;
+    top:14px; right:14px;
+    width:30px; height:30px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:none;
+    border-radius:50%;
+    background:rgba(241,234,217,0.06);
+    color:#c8d1be;
+    font-size:16px;
+    line-height:1;
+    cursor:pointer;
+  }
+  .popup-close:hover{ background:rgba(241,234,217,0.12); color:#f1ead9; }
+  .popup-headline{
+    margin:0 0 14px;
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    font-size:clamp(19px, 5.6vw, 23px);
+    letter-spacing:0.06em;
+    color:#f0c878;
+    text-shadow:0 0 22px rgba(232,185,106,0.25);
+  }
+  .popup-body{
+    margin:0 0 22px;
+    font-family:'Cormorant', serif;
+    font-weight:500;
+    font-size:16.5px;
+    line-height:1.55;
+    color:#c8d1be;
+  }
+  .popup-input{
+    width:100%;
+    padding:14px 18px;
+    margin-bottom:14px;
+    border-radius:999px;
+    border:1px solid rgba(241,234,217,0.2);
+    background:rgba(241,234,217,0.05);
+    color:#f1ead9;
+    font-family:'Jost', sans-serif;
+    font-size:15px;
+    text-align:center;
+    outline:none;
+    transition:border-color 200ms ease, background 200ms ease;
+  }
+  .popup-input::placeholder{ color:rgba(200,209,190,0.55); }
+  .popup-input:focus{ border-color:rgba(232,185,106,0.65); background:rgba(232,185,106,0.06); }
+  .popup-input.invalid{ border-color:#c96b5e; }
+  .popup-submit{
+    width:100%;
+    padding:15px 18px;
+    border:none;
+    border-radius:999px;
+    background:linear-gradient(180deg, #f0c878, #c79640);
+    color:#191307;
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    font-size:14px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    cursor:pointer;
+    box-shadow:0 10px 26px -10px rgba(232,185,106,0.55);
+    transition:transform 160ms ease, box-shadow 160ms ease;
+  }
+  .popup-submit:hover{ transform:translateY(-1px); box-shadow:0 14px 30px -10px rgba(232,185,106,0.65); }
+  .popup-submit:active{ transform:translateY(0); }
+  .popup-micro{
+    margin:14px 0 0;
+    font-family:'Space Mono', monospace;
+    font-size:10px;
+    letter-spacing:0.03em;
+    line-height:1.5;
+    color:#7d8b76;
+  }
+  .popup-thanks{
+    display:none;
+    font-family:'Cormorant', serif;
+    font-size:17px;
+    line-height:1.6;
+    color:#f1ead9;
+  }
+  #returnPopup.submitted .popup-form,
+  #returnPopup.submitted .popup-headline{ display:none; }
+  #returnPopup.submitted .popup-thanks{ display:block; }
 </style>
 </head>
 <body>
@@ -298,6 +418,20 @@
 </div>
 
 <div class="blackout" id="blackout"></div>
+
+<div id="returnPopup" role="dialog" aria-modal="true" aria-labelledby="popupHeadline">
+  <div class="popup-card">
+    <button type="button" class="popup-close" id="popupClose" aria-label="Close">&times;</button>
+    <h2 class="popup-headline" id="popupHeadline">You Found The Soundtrack.</h2>
+    <form class="popup-form" id="popupForm">
+      <p class="popup-body">The music was just the first step. Leave your number to receive weekly inspiring messages for your mental health, downloads from beyond the veil, and invites to global synchronized meditations.</p>
+      <input class="popup-input" id="popupPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Enter phone number" required>
+      <button type="submit" class="popup-submit">Join The Movement 🐇 →</button>
+      <p class="popup-micro">(Direct transmission. No spam. Text STOP anytime.)</p>
+    </form>
+    <p class="popup-thanks">You're in. Watch your messages &mdash; the next transmission is coming.</p>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -546,6 +680,77 @@
     });
   }
 
+  // ---- return-from-platform popup ----
+  // A visitor who taps Spotify/YouTube leaves this tab (or backgrounds the
+  // app, on mobile deep links) and comes back once they're done. We arm a
+  // flag on the outbound tap, then catch the return via visibilitychange
+  // (the reliable signal for "tab is back on screen") with a focus listener
+  // as a fallback for browsers/in-app webviews that don't fire it. Fires
+  // fresh on every return trip — dismissing it doesn't suppress the next one.
+  //
+  // TODO: paste the real GoHighLevel inbound webhook URL here once created.
+  var GHL_WEBHOOK_URL = '';
+
+  var returnPopup = document.getElementById('returnPopup');
+  var popupForm = document.getElementById('popupForm');
+  var popupPhone = document.getElementById('popupPhone');
+  var popupClose = document.getElementById('popupClose');
+  var platformClicked = false;
+
+  var platformRows = document.querySelectorAll('.platform-row');
+  for (var i = 0; i < platformRows.length; i++) {
+    platformRows[i].addEventListener('click', function(){
+      platformClicked = true;
+    });
+  }
+
+  function openPopup(){
+    if (!platformClicked) return;
+    platformClicked = false;
+    returnPopup.classList.remove('submitted');
+    popupForm.reset();
+    popupPhone.classList.remove('invalid');
+    returnPopup.classList.add('active');
+  }
+  function closePopup(){
+    returnPopup.classList.remove('active');
+  }
+
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') openPopup();
+  });
+  window.addEventListener('focus', openPopup);
+
+  popupClose.addEventListener('click', closePopup);
+  returnPopup.addEventListener('click', function(e){
+    if (e.target === returnPopup) closePopup();
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && returnPopup.classList.contains('active')) closePopup();
+  });
+
+  popupForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var phone = popupPhone.value.trim();
+    var digits = phone.replace(/\D/g, '');
+    if (digits.length < 7) {
+      popupPhone.classList.add('invalid');
+      popupPhone.focus();
+      return;
+    }
+    popupPhone.classList.remove('invalid');
+
+    if (GHL_WEBHOOK_URL) {
+      fetch(GHL_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone, source: 'soundtrack-to-awakening-return-popup' })
+      }).catch(function(){});
+    }
+
+    returnPopup.classList.add('submitted');
+    setTimeout(closePopup, 2600);
+  });
 
   sizeCanvas();
 })();
