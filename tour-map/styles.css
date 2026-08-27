@@ -202,7 +202,14 @@ a{color:var(--ls-gold-light);}
   margin-bottom:10px; animation:fadeUp 320ms ease both;
 }
 @keyframes fadeUp{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
-.card h3{margin:0; font-size:0.88rem; font-weight:500; color:var(--ls-text);}
+.card h3{margin:0; font-size:0.88rem; font-weight:500; color:var(--ls-text); flex:1; min-width:0;}
+.status-pill{
+  flex-shrink:0; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--ls-text-muted);
+  border-radius:999px; padding:3px 9px; font-size:0.58rem; letter-spacing:0.04em; text-transform:uppercase;
+  cursor:pointer; font-family:'Outfit'; transition:all 180ms ease;
+}
+.status-pill.status-emailed{border-color:rgba(212,175,55,0.5); color:var(--ls-gold-light); background:rgba(212,175,55,0.08);}
+.status-pill.status-booked{border-color:rgba(120,200,140,0.6); color:#8fe0a8; background:rgba(120,200,140,0.1);}
 .card .sub{margin:3px 0 0; font-size:0.72rem; color:var(--ls-text-soft);}
 .card .genres{margin:5px 0 0; font-size:0.68rem; color:var(--ls-text-muted); line-height:1.4;}
 .row-actions{display:flex; flex-wrap:wrap; align-items:center; gap:8px;}
@@ -249,6 +256,15 @@ a{color:var(--ls-gold-light);}
 }
 .route-stop .stop-actions button:hover{border-color:var(--ls-gold); color:var(--ls-gold-light);}
 
+.route-leg{
+  font-size:0.65rem; color:var(--ls-text-muted); padding:2px 0 8px 34px; letter-spacing:0.02em;
+}
+.route-leg-unknown{font-style:italic;}
+.route-summary{
+  font-size:0.68rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--ls-gold-light);
+  text-align:center; margin:0 0 12px;
+}
+
 .route-toggle-btn{
   position:fixed; right:18px; bottom:18px; z-index:42; border-radius:999px; border:1px solid var(--ls-gold);
   background:var(--ls-gold); color:#111; padding:12px 20px; font-family:'Outfit'; font-size:0.72rem;
@@ -294,6 +310,15 @@ a{color:var(--ls-gold-light);}
 }
 .modal{position:relative;}
 .toggle-line{background:none; border:none; color:var(--ls-gold-light); font-size:0.72rem; cursor:pointer; padding:0; text-decoration:underline; text-underline-offset:3px;}
+
+.profile-form{display:grid; grid-template-columns:1fr; gap:10px;}
+.profile-field{display:flex; flex-direction:column; gap:4px;}
+.profile-field span{font-size:0.68rem; color:var(--ls-text-soft);}
+.profile-field input{
+  background:rgba(255,255,255,0.05); border:1px solid var(--line); color:var(--ls-text); border-radius:8px;
+  padding:8px 10px; font-size:0.8rem; font-family:'Outfit'; outline:none; transition:border-color 180ms ease;
+}
+.profile-field input:focus{border-color:rgba(212,175,55,0.6);}
 
 .toast{
   position:fixed; left:50%; bottom:26px; transform:translate(-50%, 20px); background:var(--ls-gold); color:#111;

@@ -122,6 +122,68 @@
     return fips ? { fips, name } : null;
   }
 
+  // Collapses near-identical scraped entries — same normalized name AND a
+  // shared email or website domain (a name match alone isn't enough: some
+  // generic extraction artifacts like "events" share a name but nothing
+  // else, and merging those would wrongly combine unrelated listings).
+  const normKey = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const domainOf = (url) => {
+    if (!url) return null;
+    try { return new URL(websiteHref(url)).hostname.replace(/^www\./, ""); } catch { return null; }
+  };
+  // locationKey (e.g. "state" for agents): when the raw records carry a
+  // location field, two same-name/same-domain records only merge if that
+  // field agrees (or is blank on both) — a shared domain alone isn't
+  // enough, since several agencies here run one site with a separate
+  // per-state landing page each, which must stay as separate state pins.
+  function dedupeRaw(list, locationKey, exactKeys = []) {
+    const byName = new Map();
+    list.forEach((item, i) => {
+      const key = normKey(item.name);
+      if (!key) return;
+      if (!byName.has(key)) byName.set(key, []);
+      byName.get(key).push(i);
+    });
+    const consumed = new Set();
+    const result = [];
+    list.forEach((item, i) => {
+      if (consumed.has(i)) return;
+      const key = normKey(item.name);
+      const candidates = key ? byName.get(key) : [i];
+      const baseEmail = (item.email || "").toLowerCase().split("/")[0].trim();
+      const baseDomain = domainOf(item.website);
+      const baseLoc = locationKey ? (item[locationKey] || "").toLowerCase().trim() : "";
+      const cluster = [i];
+      for (const j of candidates) {
+        if (j === i || consumed.has(j)) continue;
+        const other = list[j];
+        const otherEmail = (other.email || "").toLowerCase().split("/")[0].trim();
+        const otherDomain = domainOf(other.website);
+        const otherLoc = locationKey ? (other[locationKey] || "").toLowerCase().trim() : "";
+        const locCompatible = !locationKey || !baseLoc || !otherLoc || baseLoc === otherLoc;
+        const exactCompatible = exactKeys.every((k) => (item[k] || "") === (other[k] || ""));
+        if (locCompatible && exactCompatible && ((baseEmail && otherEmail && baseEmail === otherEmail) || (baseDomain && otherDomain && baseDomain === otherDomain))) {
+          cluster.push(j);
+        }
+      }
+      cluster.forEach((idx) => consumed.add(idx));
+      if (cluster.length === 1) { result.push(item); return; }
+      const mergedItem = { ...item };
+      for (const idx of cluster) {
+        if (idx === i) continue;
+        const other = list[idx];
+        for (const k of Object.keys(other)) {
+          const v = other[k], cur = mergedItem[k];
+          if ((cur === null || cur === undefined || cur === "") && v !== null && v !== undefined && v !== "") mergedItem[k] = v;
+          if (Array.isArray(cur) && Array.isArray(v)) mergedItem[k] = Array.from(new Set([...cur, ...v]));
+        }
+      }
+      mergedItem.__dupCount = cluster.length - 1;
+      result.push(mergedItem);
+    });
+    return result;
+  }
+
   function normalizeAgent(a, i) {
     const isNational = a.scope === "national";
     const stateFips = !isNational ? NAME_TO_FIPS.get((a.state || "").toLowerCase()) ?? null : null;
@@ -136,6 +198,7 @@
       id: `agency-${i}`, type: "agent", name: a.name, subtitle: subtitle || null,
       genresText, email: cleanEmail(a.email), website, phone: cleanPhone(a.phone), links,
       isNational, stateFips, stateName: !isNational ? cleanStr(a.state) : null,
+      dupCount: a.__dupCount || 0,
       searchIndex: [a.name, genresText, subtitle, website].filter(Boolean).join(" ").toLowerCase(),
     };
   }
@@ -154,6 +217,7 @@
       genresText: null, email: cleanEmail(f.email), website, phone: cleanPhone(f.phone), links,
       isNational: false, stateFips: null, stateName: null, month: subtitle,
       approxStateFips: approx?.fips ?? null, approxStateName: approx?.name ?? null,
+      dupCount: f.__dupCount || 0,
       searchIndex: [f.name, subtitle, website].filter(Boolean).join(" ").toLowerCase(),
     };
   }
@@ -178,6 +242,8 @@
     agents: [],
     festivals: [],
     route: loadRoute(),
+    profile: loadProfile(),
+    contacted: loadContacted(),
     topology: null,
     features: null,
     pathGen: null,
@@ -192,6 +258,63 @@
   }
   function saveRoute() {
     try { localStorage.setItem("ls_tour_route", JSON.stringify(state.route)); } catch {}
+  }
+
+  // Saved once, reused everywhere the AI prompt / template need "my info" —
+  // so an artist never retypes their stats per outreach email.
+  const PROFILE_FIELDS = [
+    { key: "artistName", label: "Your name (for signing emails)", placeholder: "Ela Winters" },
+    { key: "nameGenre", label: "Name / genre in one phrase", placeholder: "Ela Winters — ambient soul for late-night drives" },
+    { key: "stat", label: "Best crowd size / stat", placeholder: "40k monthly listeners" },
+    { key: "festivals", label: "Festivals you've played", placeholder: "Bonnaroo, Envision" },
+    { key: "artists", label: "Artists you've toured with / supported", placeholder: "Nahko, Xavier Rudd" },
+    { key: "momentum", label: "Current momentum signal", placeholder: "New single out this month, tour flyer attached" },
+    { key: "secondary", label: "Secondary offerings", placeholder: "Sound bath, songwriting workshop" },
+    { key: "promoLink", label: "Promo video / highlight reel link", placeholder: "https://youtu.be/..." },
+    { key: "instagramEpk", label: "Instagram + press kit / EPK link", placeholder: "@elawinters · https://elawinters.com/epk" },
+    { key: "phone", label: "Phone number", placeholder: "(555) 123-4567" },
+  ];
+  function loadProfile() {
+    try {
+      const raw = localStorage.getItem("ls_artist_profile");
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  }
+  function saveProfile(next) {
+    state.profile = next;
+    try { localStorage.setItem("ls_artist_profile", JSON.stringify(next)); } catch {}
+  }
+  function autoMatchNiche(text) {
+    if (!text) return null;
+    const lower = text.toLowerCase();
+    const hit = NICHES.find((n) => n.kw && n.kw.some((k) => lower.includes(k)));
+    return hit ? hit.key : null;
+  }
+
+  // Lightweight outreach-status tags per card (localStorage, not on the
+  // records themselves) so a long campaign doesn't rely on memory.
+  const CONTACT_STATUSES = [
+    { key: "none", label: "Not contacted" },
+    { key: "emailed", label: "Emailed" },
+    { key: "booked", label: "Booked" },
+  ];
+  function loadContacted() {
+    try {
+      const raw = localStorage.getItem("ls_contact_status");
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  }
+  function saveContacted() {
+    try { localStorage.setItem("ls_contact_status", JSON.stringify(state.contacted)); } catch {}
+  }
+  function getContactStatus(id) { return state.contacted[id] || "none"; }
+  function cycleContactStatus(id) {
+    const order = CONTACT_STATUSES.map((s) => s.key);
+    const cur = getContactStatus(id);
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    if (next === "none") delete state.contacted[id];
+    else state.contacted[id] = next;
+    saveContacted();
   }
 
   /* ---------------- Boot ---------------- */
@@ -214,6 +337,7 @@
     spCount: document.getElementById("spCount"),
     spBody: document.getElementById("spBody"),
     spClose: document.getElementById("spClose"),
+    profileBtn: document.getElementById("profileBtn"),
     festivalViewToggle: document.getElementById("festivalViewToggle"),
     festivalApproxCount: document.getElementById("festivalApproxCount"),
     routeToggleBtn: document.getElementById("routeToggleBtn"),
@@ -221,6 +345,7 @@
     routeDrawer: document.getElementById("routeDrawer"),
     rdBody: document.getElementById("rdBody"),
     clearRouteBtn: document.getElementById("clearRouteBtn"),
+    exportRouteBtn: document.getElementById("exportRouteBtn"),
     routeCloseBtn: document.getElementById("routeCloseBtn"),
     modalOverlay: document.getElementById("modalOverlay"),
     modalContent: document.getElementById("modalContent"),
@@ -233,8 +358,8 @@
     fetch("data/us-states-10m.json").then((r) => r.json()),
   ])
     .then(([agentsRaw, festivalsRaw, topo]) => {
-      state.agents = Array.isArray(agentsRaw) ? agentsRaw.map(normalizeAgent) : [];
-      state.festivals = Array.isArray(festivalsRaw) ? festivalsRaw.map(normalizeFestival) : [];
+      state.agents = Array.isArray(agentsRaw) ? dedupeRaw(agentsRaw, "state", ["scope"]).map(normalizeAgent) : [];
+      state.festivals = Array.isArray(festivalsRaw) ? dedupeRaw(festivalsRaw).map(normalizeFestival) : [];
       state.topology = topo;
       initMap(topo);
       renderNicheChips();
@@ -601,17 +726,36 @@
   els.spClose.addEventListener("click", () => { closeSidePanel(); resetZoom(); });
 
   function effectiveFips(item) { return item.stateFips ?? item.approxStateFips ?? null; }
+  function effectiveStateName(item) { return item.stateName ?? item.approxStateName ?? null; }
+
+  // Straight-line ("as the crow flies") distance between two route stops'
+  // state centers — a rough tour-planning estimate, not driving distance.
+  function haversineMiles([lat1, lon1], [lat2, lon2]) {
+    const R = 3958.8;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  }
+  function stateLatLon(stateName) { return window.LS_STATE_CENTER_LATLON?.[stateName] || null; }
 
   function cardHtml(item) {
     const inRoute = state.route.some((r) => r.id === item.id);
     const approxNote = !item.stateName && item.approxStateName
       ? `<p class="sub" style="color:var(--ls-gold-light);">~ ${escapeHtml(item.approxStateName)} <i style="color:var(--ls-text-muted);">(approx., via area code)</i></p>` : "";
+    const dupNote = item.dupCount > 0
+      ? `<p class="sub" style="color:var(--ls-text-muted);font-size:10px;">merged ${item.dupCount} duplicate listing${item.dupCount === 1 ? "" : "s"}</p>` : "";
+    const status = getContactStatus(item.id);
     return `
       <div class="card" data-id="${item.id}">
-        <h3>${escapeHtml(item.name)}</h3>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <h3>${escapeHtml(item.name)}</h3>
+          <button type="button" data-action="status" class="status-pill status-${status}" title="Click to change outreach status">${CONTACT_STATUSES.find((s) => s.key === status).label}</button>
+        </div>
         ${item.subtitle ? `<p class="sub">${escapeHtml(item.subtitle)}</p>` : ""}
         ${approxNote}
         ${item.genresText ? `<p class="genres">${escapeHtml(item.genresText)}</p>` : ""}
+        ${dupNote}
         <div class="row-actions">
           <button type="button" data-action="contact">Contact &amp; email</button>
           <button type="button" data-action="route" class="${inRoute ? "added" : ""}">${inRoute ? "✓ In route" : "+ Add to route"}</button>
@@ -629,6 +773,12 @@
         toggleRoute(item);
         e.target.classList.toggle("added");
         e.target.textContent = state.route.some((r) => r.id === item.id) ? "✓ In route" : "+ Add to route";
+      });
+      cardEl.querySelector('[data-action="status"]').addEventListener("click", (e) => {
+        cycleContactStatus(item.id);
+        const s = getContactStatus(item.id);
+        e.target.className = `status-pill status-${s}`;
+        e.target.textContent = CONTACT_STATUSES.find((x) => x.key === s).label;
       });
     });
   }
@@ -677,20 +827,44 @@
       els.rdBody.innerHTML = `<p class="empty-msg">No stops yet — add an agent or festival from the map to start planning your route.</p>`;
       return;
     }
-    els.rdBody.innerHTML = state.route.map((r, i) => `
-      <div class="route-stop" data-id="${r.id}">
-        <div class="num">${i + 1}</div>
-        <div class="info">
-          <div class="name">${escapeHtml(r.name)}</div>
-          <div class="loc">${escapeHtml(r.stateName || (r.approxStateName ? `~${r.approxStateName} (approx.)` : null) || r.subtitle || (r.type === "festival" ? "Location not mapped" : "National"))}</div>
+
+    let totalMiles = 0, hasAnyLeg = false;
+    const rows = state.route.map((r, i) => {
+      const loc = r.stateName || (r.approxStateName ? `~${r.approxStateName} (approx.)` : null) || r.subtitle || (r.type === "festival" ? "Location not mapped" : "National");
+      const next = state.route[i + 1];
+      let legHtml = "";
+      if (next) {
+        const a = stateLatLon(effectiveStateName(r)), b = stateLatLon(effectiveStateName(next));
+        if (a && b) {
+          const miles = haversineMiles(a, b);
+          totalMiles += miles;
+          hasAnyLeg = true;
+          legHtml = `<div class="route-leg">↓ ~${miles.toLocaleString()} mi to next stop</div>`;
+        } else {
+          legHtml = `<div class="route-leg route-leg-unknown">↓ distance unknown (no located state)</div>`;
+        }
+      }
+      return `
+        <div class="route-stop" data-id="${r.id}">
+          <div class="num">${i + 1}</div>
+          <div class="info">
+            <div class="name">${escapeHtml(r.name)}</div>
+            <div class="loc">${escapeHtml(loc)}</div>
+          </div>
+          <input type="date" value="${r.date || ""}" data-date-id="${r.id}">
+          <div class="stop-actions">
+            <button type="button" data-up="${r.id}" title="Move up">↑</button>
+            <button type="button" data-down="${r.id}" title="Move down">↓</button>
+            <button type="button" data-remove="${r.id}" title="Remove">&times;</button>
+          </div>
         </div>
-        <input type="date" value="${r.date || ""}" data-date-id="${r.id}">
-        <div class="stop-actions">
-          <button type="button" data-up="${r.id}" title="Move up">↑</button>
-          <button type="button" data-down="${r.id}" title="Move down">↓</button>
-          <button type="button" data-remove="${r.id}" title="Remove">&times;</button>
-        </div>
-      </div>`).join("");
+        ${legHtml}`;
+    }).join("");
+
+    const summary = state.route.length > 1
+      ? `<p class="route-summary">${hasAnyLeg ? `~${totalMiles.toLocaleString()} mi total (straight-line, in current order)` : "Add located stops to estimate total distance"}</p>`
+      : "";
+    els.rdBody.innerHTML = summary + rows;
 
     els.rdBody.querySelectorAll("[data-up]").forEach((b) => b.addEventListener("click", () => moveStop(b.dataset.up, -1)));
     els.rdBody.querySelectorAll("[data-down]").forEach((b) => b.addEventListener("click", () => moveStop(b.dataset.down, 1)));
@@ -699,6 +873,27 @@
       const r = state.route.find((x) => x.id === inp.dataset.dateId);
       if (r) { r.date = inp.value; saveRoute(); renderRouteUi(); }
     }));
+  }
+
+  function exportRouteCsv() {
+    if (!state.route.length) return;
+    const header = ["#", "Name", "Type", "Location", "Date", "Email", "Website"];
+    const rows = state.route.map((r, i) => [
+      i + 1, r.name, r.type,
+      r.stateName || (r.approxStateName ? `${r.approxStateName} (approx.)` : "") || "",
+      r.date || "", r.email || "", r.website || "",
+    ]);
+    const csvEscape = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tour-route-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   function drawRouteOnMap() {
@@ -717,6 +912,7 @@
     });
   }
 
+  els.exportRouteBtn.addEventListener("click", exportRouteCsv);
   els.routeToggleBtn.addEventListener("click", () => els.routeDrawer.classList.toggle("open"));
   els.routeCloseBtn.addEventListener("click", () => els.routeDrawer.classList.remove("open"));
   els.clearRouteBtn.addEventListener("click", () => {
@@ -727,11 +923,54 @@
     drawRouteOnMap();
   });
 
+  /* ---------------- Artist profile ---------------- */
+  function openProfileModal() {
+    const p = state.profile;
+    els.modalContent.innerHTML = `
+      <button class="modal-close" id="modalCloseBtn" aria-label="Close">&times;</button>
+      <h2>My Profile</h2>
+      <p class="m-sub">Saved on this device — auto-fills the AI prompt and email template every time, so you never retype it.</p>
+      <div class="m-section">
+        <div class="profile-form">
+          ${PROFILE_FIELDS.map((f) => `
+            <label class="profile-field">
+              <span>${escapeHtml(f.label)}</span>
+              <input type="text" data-profile-key="${f.key}" value="${escapeHtml(p[f.key] || "")}" placeholder="${escapeHtml(f.placeholder)}">
+            </label>`).join("")}
+        </div>
+        <div class="m-actions">
+          <button type="button" class="icon-btn gold" id="saveProfileBtn">Save profile</button>
+        </div>
+      </div>
+    `;
+    els.modalContent.querySelector("#modalCloseBtn").addEventListener("click", closeModal);
+    els.modalContent.querySelector("#saveProfileBtn").addEventListener("click", () => {
+      const next = { ...state.profile };
+      els.modalContent.querySelectorAll("[data-profile-key]").forEach((inp) => { next[inp.dataset.profileKey] = inp.value.trim(); });
+      saveProfile(next);
+      const nicheMatch = autoMatchNiche(next.nameGenre);
+      if (nicheMatch && state.mode === "agents") {
+        state.niche = nicheMatch;
+        renderNicheChips();
+        renderAll();
+        showToast(`Profile saved — applied "${NICHES.find((n) => n.key === nicheMatch).label}" filter`);
+      } else {
+        showToast("Profile saved");
+      }
+      closeModal();
+    });
+    els.modalOverlay.classList.add("open");
+  }
+  els.profileBtn.addEventListener("click", openProfileModal);
+
   /* ---------------- Contact / email modal ---------------- */
   function openContactModal(item) {
     const tpl = window.LS_TEMPLATE;
+    const p = state.profile;
     const subject = "Touring your area — quick note";
-    const body = tpl.REFERENCE_TEMPLATE;
+    let body = tpl.REFERENCE_TEMPLATE;
+    if (p.artistName) body = body.split("[Your Name]").join(p.artistName);
+    if (p.phone) body = body.replace("[phone]", p.phone);
     const gmailUrl = item.email
       ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(item.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
       : null;
@@ -740,7 +979,17 @@
       : null;
     const aiPrompt = tpl.AI_PROMPT_TEMPLATE
       .replace("{{EVENT_NAME}}", item.name)
-      .replace("{{EVENT_WEBSITE}}", item.website || "not listed");
+      .replace("{{EVENT_WEBSITE}}", item.website || "not listed")
+      .replace("{{MY_NAME_GENRE}}", p.nameGenre || "")
+      .replace("{{MY_STAT}}", p.stat || "")
+      .replace("{{MY_FESTIVALS}}", p.festivals || "")
+      .replace("{{MY_ARTISTS}}", p.artists || "")
+      .replace("{{MY_MOMENTUM}}", p.momentum || "")
+      .replace("{{MY_SECONDARY}}", p.secondary || "")
+      .replace("{{MY_PROMO_LINK}}", p.promoLink || "")
+      .replace("{{MY_INSTAGRAM_EPK}}", p.instagramEpk || "")
+      .replace("{{MY_PHONE}}", p.phone || "");
+    const hasProfile = PROFILE_FIELDS.some((f) => p[f.key]);
 
     els.modalContent.innerHTML = `
       <button class="modal-close" id="modalCloseBtn" aria-label="Close">&times;</button>
@@ -780,7 +1029,11 @@
 
       <div class="m-section">
         <h4>Or draft it with AI</h4>
-        <p style="font-size:0.72rem;color:var(--ls-text-soft);margin:0 0 8px;">Copy this prompt into ChatGPT (or any assistant) along with your own info — it already knows the 7 rules and this event's name.</p>
+        <p style="font-size:0.72rem;color:var(--ls-text-soft);margin:0 0 8px;">
+          ${hasProfile
+            ? "Your saved profile is already filled in below — just add this event's specifics in ChatGPT."
+            : `Copy this prompt into ChatGPT (or any assistant) along with your own info — it already knows the 7 rules and this event's name. <button type="button" class="toggle-line" id="fillProfileLink">Save your info once</button> to skip retyping it every time.`}
+        </p>
         <div class="m-actions">
           <button type="button" class="icon-btn gold" id="copyAiBtn">Copy AI prompt</button>
         </div>
@@ -796,6 +1049,8 @@
     });
     els.modalContent.querySelector("#copyTemplateBtn").addEventListener("click", () => copyText(body, "Template copied"));
     els.modalContent.querySelector("#copyAiBtn").addEventListener("click", () => copyText(aiPrompt, "AI prompt copied — paste into ChatGPT"));
+    const fillProfileLink = els.modalContent.querySelector("#fillProfileLink");
+    if (fillProfileLink) fillProfileLink.addEventListener("click", () => openProfileModal());
 
     els.modalOverlay.classList.add("open");
   }

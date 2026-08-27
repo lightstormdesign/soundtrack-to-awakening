@@ -41,15 +41,15 @@ RULES (follow all seven, do not skip any):
 7. Close low-pressure: give an easy out, then an easy either/or CTA (call or reply). Keep the whole email under 150 words. Detached, warm, no corporate tone, no "I hope you're having a beautiful day" type filler. Never suggest attaching files — links only.
 
 MY INFO:
-- Name / genre in one phrase:
-- Best crowd size / stat (pick one: monthly listeners, streams, biggest crowd):
-- Festivals I've played (name-drop worthy):
-- Artists I've toured with or directly supported (full list, so you can check for overlap):
-- Current momentum signal (tour flyer, new single, upcoming video, etc.):
-- Secondary offerings (workshops, sets, circles, anything beyond the main show):
-- Promo video / highlight reel link (ONE, best moment first):
-- Instagram handle + full press kit / EPK link:
-- Phone number:
+- Name / genre in one phrase: {{MY_NAME_GENRE}}
+- Best crowd size / stat (pick one: monthly listeners, streams, biggest crowd): {{MY_STAT}}
+- Festivals I've played (name-drop worthy): {{MY_FESTIVALS}}
+- Artists I've toured with or directly supported (full list, so you can check for overlap): {{MY_ARTISTS}}
+- Current momentum signal (tour flyer, new single, upcoming video, etc.): {{MY_MOMENTUM}}
+- Secondary offerings (workshops, sets, circles, anything beyond the main show): {{MY_SECONDARY}}
+- Promo video / highlight reel link (ONE, best moment first): {{MY_PROMO_LINK}}
+- Instagram handle + full press kit / EPK link: {{MY_INSTAGRAM_EPK}}
+- Phone number: {{MY_PHONE}}
 
 TARGET EVENT:
 - Event/venue name: {{EVENT_NAME}}
