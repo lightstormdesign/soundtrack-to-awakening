@@ -149,6 +149,12 @@ a{color:var(--ls-gold-light);}
 .state-marker:hover{fill-opacity:1;}
 .state-marker.dimmed{opacity:0.15;}
 
+.state-marker-approx{
+  fill:rgba(212,175,55,0.12); stroke:var(--ls-gold-light); stroke-width:1; stroke-dasharray:2 1.6; cursor:pointer;
+  transition:fill 200ms ease, r 200ms ease;
+}
+.state-marker-approx:hover{fill:rgba(212,175,55,0.28);}
+
 .marker-pulse{
   fill:none; stroke:var(--ls-gold); stroke-width:0.8; opacity:0; pointer-events:none;
 }

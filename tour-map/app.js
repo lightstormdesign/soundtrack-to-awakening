@@ -105,6 +105,23 @@
   const escapeHtml = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  // Best-effort, disclosed-as-approximate location for records with no real
+  // state field: resolves a US phone number's area code to the one state it
+  // belongs to (a fixed public numbering-plan table, not a guess about the
+  // specific festival) — skipped for toll-free codes and multi-match junk.
+  const PHONE_RE = /(?:\+?1[-.\s]?)?\(?([2-9]\d{2})\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+  function resolveApproxState(phoneRaw) {
+    if (!phoneRaw) return null;
+    const m = PHONE_RE.exec(phoneRaw);
+    if (!m) return null;
+    const code = m[1];
+    if (window.LS_TOLLFREE_CODES?.has(code)) return null;
+    const name = window.LS_AREA_CODE_STATE?.[code];
+    if (!name) return null;
+    const fips = NAME_TO_FIPS.get(name.toLowerCase());
+    return fips ? { fips, name } : null;
+  }
+
   function normalizeAgent(a, i) {
     const isNational = a.scope === "national";
     const stateFips = !isNational ? NAME_TO_FIPS.get((a.state || "").toLowerCase()) ?? null : null;
@@ -131,10 +148,12 @@
       f.twitter ? { label: "Twitter", href: cleanStr(f.twitter) } : null,
     ].filter((l) => l && l.href);
     const subtitle = cleanStr(f.month);
+    const approx = resolveApproxState(f.phone);
     return {
       id: `festival-${i}`, type: "festival", name: cleanStr(f.name) || "Untitled festival", subtitle,
       genresText: null, email: cleanEmail(f.email), website, phone: cleanPhone(f.phone), links,
       isNational: false, stateFips: null, stateName: null, month: subtitle,
+      approxStateFips: approx?.fips ?? null, approxStateName: approx?.name ?? null,
       searchIndex: [f.name, subtitle, website].filter(Boolean).join(" ").toLowerCase(),
     };
   }
@@ -154,6 +173,8 @@
     niche: "all",
     month: "all",
     selectedFips: null,
+    festivalMapView: false,
+    sidePanelKind: null,
     agents: [],
     festivals: [],
     route: loadRoute(),
@@ -193,6 +214,8 @@
     spCount: document.getElementById("spCount"),
     spBody: document.getElementById("spBody"),
     spClose: document.getElementById("spClose"),
+    festivalViewToggle: document.getElementById("festivalViewToggle"),
+    festivalApproxCount: document.getElementById("festivalApproxCount"),
     routeToggleBtn: document.getElementById("routeToggleBtn"),
     routeBtnCount: document.getElementById("routeBtnCount"),
     routeDrawer: document.getElementById("routeDrawer"),
@@ -216,6 +239,7 @@
       initMap(topo);
       renderNicheChips();
       updateDataNote();
+      updateLayoutVisibility();
       renderAll();
     })
     .catch((err) => {
@@ -224,7 +248,7 @@
     });
 
   /* ---------------- Map setup (d3 + topojson) ---------------- */
-  let svg, zoomLayer, statesLayer, labelsLayer, markersLayer, routeLayer, path, projection;
+  let svg, zoomLayer, statesLayer, labelsLayer, markersLayer, approxMarkersLayer, routeLayer, path, projection;
 
   function initMap(topo) {
     const width = 975, height = 610;
@@ -239,6 +263,7 @@
     statesLayer = zoomLayer.append("g").attr("id", "statesLayer");
     routeLayer = zoomLayer.append("g").attr("id", "routeLayer");
     markersLayer = zoomLayer.append("g").attr("id", "markersLayer");
+    approxMarkersLayer = zoomLayer.append("g").attr("id", "approxMarkersLayer");
     labelsLayer = zoomLayer.append("g").attr("id", "labelsLayer");
 
     statesLayer.selectAll("path.state-path")
@@ -288,10 +313,15 @@
   function hideTooltip() { els.tooltip.classList.remove("show"); }
 
   function onStateClick(fips) {
-    if (state.mode !== "agents") return;
-    state.selectedFips = fips;
-    zoomToState(fips);
-    openStatePanel(fips);
+    if (state.mode === "agents") {
+      state.selectedFips = fips;
+      zoomToState(fips);
+      openStatePanel(fips);
+    } else if (state.mode === "festivals" && state.festivalMapView) {
+      state.selectedFips = fips;
+      zoomToState(fips);
+      openFestivalApproxPanel(fips);
+    }
   }
 
   function zoomToState(fips) {
@@ -336,43 +366,54 @@
   function renderAll() {
     renderMapMarkers();
     renderNationalCount();
+    renderFestivalApproxCount();
     if (state.mode === "festivals") renderFestivalGrid();
-    if (state.sidePanelFips) openStatePanel(state.sidePanelFips);
+    if (state.sidePanelKind === "agentState") openStatePanel(state.sidePanelFips);
+    else if (state.sidePanelKind === "festivalApprox") openFestivalApproxPanel(state.sidePanelFips);
+    else if (state.sidePanelKind === "national") openNationalPanel();
+  }
+
+  function groupByFips(items, fipsKey) {
+    const byFips = new Map();
+    for (const it of items) {
+      const fips = it[fipsKey];
+      if (fips == null) continue;
+      if (!byFips.has(fips)) byFips.set(fips, []);
+      byFips.get(fips).push(it);
+    }
+    return byFips;
   }
 
   function renderMapMarkers() {
-    const filtered = currentFilteredAgents().filter((a) => !a.isNational && a.stateFips != null);
-    const byFips = new Map();
-    for (const a of filtered) {
-      if (!byFips.has(a.stateFips)) byFips.set(a.stateFips, []);
-      byFips.get(a.stateFips).push(a);
-    }
-    const maxCount = Math.max(1, ...Array.from(byFips.values()).map((v) => v.length));
-    const r = d3.scaleSqrt().domain([0, maxCount]).range([0, 15]);
-    const hasFilter = state.query.trim() !== "" || state.niche !== "all";
-
-    const isFestivalMode = state.mode === "festivals";
+    const isAgentsMode = state.mode === "agents";
+    const showApproxFestivals = state.mode === "festivals" && state.festivalMapView;
 
     statesLayer.selectAll("path.state-path")
-      .classed("dimmed", (d) => isFestivalMode)
+      .classed("dimmed", () => state.mode === "festivals" && !state.festivalMapView)
       .classed("selected", (d) => +d.id === state.selectedFips);
-    labelsLayer.selectAll("text.state-label").classed("dimmed", () => isFestivalMode);
+    labelsLayer.selectAll("text.state-label")
+      .classed("dimmed", () => state.mode === "festivals" && !state.festivalMapView);
 
-    const markerData = isFestivalMode ? [] : Array.from(byFips.entries()).map(([fips, items]) => ({ fips, items }));
+    // Agents layer
+    const agentByFips = isAgentsMode
+      ? groupByFips(currentFilteredAgents().filter((a) => !a.isNational), "stateFips")
+      : new Map();
+    const agentMax = Math.max(1, ...Array.from(agentByFips.values()).map((v) => v.length));
+    const agentR = d3.scaleSqrt().domain([0, agentMax]).range([0, 15]);
+    const agentData = Array.from(agentByFips.entries()).map(([fips, items]) => ({ fips, items }));
 
     markersLayer.selectAll("circle.state-marker")
-      .data(markerData, (d) => d.fips)
+      .data(agentData, (d) => d.fips)
       .join(
         (enter) => enter.append("circle")
           .attr("class", "state-marker")
           .attr("cx", (d) => centroidFor(d.fips)?.[0] ?? 0)
           .attr("cy", (d) => centroidFor(d.fips)?.[1] ?? 0)
           .attr("r", 0)
-          .call((e) => e.transition().duration(400).attr("r", (d) => Math.max(3, r(d.items.length)))),
-        (update) => update.call((u) => u.transition().duration(300).attr("r", (d) => Math.max(3, r(d.items.length)))),
+          .call((e) => e.transition().duration(400).attr("r", (d) => Math.max(3, agentR(d.items.length)))),
+        (update) => update.call((u) => u.transition().duration(300).attr("r", (d) => Math.max(3, agentR(d.items.length)))),
         (exit) => exit.transition().duration(200).attr("r", 0).remove()
       )
-      .classed("dimmed", false)
       .on("mouseenter", (e, d) => {
         const meta = FIPS_TO_META.get(d.fips);
         els.tooltip.innerHTML = `<div class="t-title">${meta.name}</div><div class="t-sub">${d.items.length} matching agent${d.items.length === 1 ? "" : "s"}</div>`;
@@ -383,11 +424,44 @@
       .on("mouseleave", hideTooltip)
       .on("click", (e, d) => { e.stopPropagation(); onStateClick(d.fips); });
 
-    void hasFilter;
+    // Approximate festival layer (phone area-code inferred, disclosed as unconfirmed)
+    const approxByFips = showApproxFestivals
+      ? groupByFips(currentFilteredFestivals(), "approxStateFips")
+      : new Map();
+    const approxMax = Math.max(1, ...Array.from(approxByFips.values()).map((v) => v.length));
+    const approxR = d3.scaleSqrt().domain([0, approxMax]).range([0, 15]);
+    const approxData = Array.from(approxByFips.entries()).map(([fips, items]) => ({ fips, items }));
+
+    approxMarkersLayer.selectAll("circle.state-marker-approx")
+      .data(approxData, (d) => d.fips)
+      .join(
+        (enter) => enter.append("circle")
+          .attr("class", "state-marker-approx")
+          .attr("cx", (d) => centroidFor(d.fips)?.[0] ?? 0)
+          .attr("cy", (d) => centroidFor(d.fips)?.[1] ?? 0)
+          .attr("r", 0)
+          .call((e) => e.transition().duration(400).attr("r", (d) => Math.max(3, approxR(d.items.length)))),
+        (update) => update.call((u) => u.transition().duration(300).attr("r", (d) => Math.max(3, approxR(d.items.length)))),
+        (exit) => exit.transition().duration(200).attr("r", 0).remove()
+      )
+      .on("mouseenter", (e, d) => {
+        const meta = FIPS_TO_META.get(d.fips);
+        els.tooltip.innerHTML = `<div class="t-title">${meta.name}</div><div class="t-sub">${d.items.length} festival${d.items.length === 1 ? "" : "s"} · approx., via area code</div>`;
+        els.tooltip.classList.add("show");
+        moveTooltip(e);
+      })
+      .on("mousemove", moveTooltip)
+      .on("mouseleave", hideTooltip)
+      .on("click", (e, d) => { e.stopPropagation(); onStateClick(d.fips); });
   }
 
   function renderNationalCount() {
     els.nationalCount.textContent = currentFilteredAgents().filter((a) => a.isNational).length;
+  }
+
+  function renderFestivalApproxCount() {
+    if (!els.festivalApproxCount) return;
+    els.festivalApproxCount.textContent = currentFilteredFestivals().filter((f) => f.approxStateFips != null).length;
   }
 
   function renderNicheChips() {
@@ -403,6 +477,8 @@
           state.month = btn.dataset.month;
           renderNicheChips();
           renderFestivalGrid();
+          renderMapMarkers();
+          updateLayoutVisibility();
         });
       });
     } else {
@@ -420,21 +496,37 @@
   }
 
   function updateDataNote() {
-    els.dataNote.textContent = state.mode === "agents"
-      ? "Pulled from the lightstorm.co directory — verify a contact before a mass send, some entries may be outdated."
-      : "Festival location data isn't reliably captured yet, so festivals are searchable below rather than pinned on the map — every other action (route, email, AI prompt) still works the same way.";
+    if (state.mode === "agents") {
+      els.dataNote.textContent = "Pulled from the lightstorm.co directory — verify a contact before a mass send, some entries may be outdated.";
+      return;
+    }
+    const withApprox = state.festivals.filter((f) => f.approxStateFips != null).length;
+    els.dataNote.textContent = state.festivalMapView
+      ? `Showing the ${withApprox} of ${state.festivals.length} festivals whose phone number's area code resolves to one state — an approximation, not a confirmed address. The rest have no usable location and stay in the list view.`
+      : `Festival location data isn't reliably captured for most entries, so festivals are searchable below rather than pinned on the map. ${withApprox} of them have an approximate location inferred from their phone area code — toggle "Show approx. map" to see those on the map. Every other action (route, email, AI prompt) works the same either way.`;
   }
 
   /* ---------------- Mode / search wiring ---------------- */
+  function updateLayoutVisibility() {
+    const showMap = state.mode === "agents" || (state.mode === "festivals" && state.festivalMapView);
+    els.mapStage.style.display = showMap ? "flex" : "none";
+    els.festivalScroll.style.display = state.mode === "festivals" && !state.festivalMapView ? "block" : "none";
+    els.nationalBtn.style.display = state.mode === "agents" ? "inline-block" : "none";
+    els.festivalViewToggle.style.display = state.mode === "festivals" ? "inline-block" : "none";
+    els.festivalViewToggle.innerHTML = state.festivalMapView
+      ? "Show as list"
+      : `Show approx. map <span class="count-badge" id="festivalApproxCount">0</span>`;
+    els.festivalApproxCount = document.getElementById("festivalApproxCount");
+    renderFestivalApproxCount();
+  }
+
   els.modeToggle.querySelectorAll("button[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.mode = btn.dataset.mode;
+      state.festivalMapView = false;
       els.modeToggle.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
       els.modePill.style.transform = state.mode === "agents" ? "translateX(0)" : "translateX(100%)";
-      const isFest = state.mode === "festivals";
-      els.mapStage.style.display = isFest ? "none" : "flex";
-      els.festivalScroll.style.display = isFest ? "block" : "none";
-      els.nationalBtn.style.display = isFest ? "none" : "inline-block";
+      updateLayoutVisibility();
       closeSidePanel();
       resetZoom();
       renderNicheChips();
@@ -443,12 +535,22 @@
     });
   });
 
+  els.festivalViewToggle.addEventListener("click", () => {
+    state.festivalMapView = !state.festivalMapView;
+    updateLayoutVisibility();
+    closeSidePanel();
+    resetZoom();
+    updateDataNote();
+    renderAll();
+  });
+
   let searchDebounce;
   els.searchInput.addEventListener("input", () => {
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => {
       state.query = els.searchInput.value;
       renderAll();
+      updateLayoutVisibility();
     }, 200);
   });
 
@@ -456,6 +558,7 @@
 
   /* ---------------- Side panel ---------------- */
   function openStatePanel(fips) {
+    state.sidePanelKind = "agentState";
     state.sidePanelFips = fips;
     const meta = FIPS_TO_META.get(fips);
     const items = currentFilteredAgents().filter((a) => a.stateFips === fips);
@@ -466,7 +569,20 @@
     els.sidePanel.classList.add("open");
   }
 
+  function openFestivalApproxPanel(fips) {
+    state.sidePanelKind = "festivalApprox";
+    state.sidePanelFips = fips;
+    const meta = FIPS_TO_META.get(fips);
+    const items = currentFilteredFestivals().filter((f) => f.approxStateFips === fips);
+    els.spTitle.textContent = `${meta.name} (approx.)`;
+    els.spCount.textContent = `${items.length} festival${items.length === 1 ? "" : "s"} · location inferred from phone area code, unconfirmed`;
+    els.spBody.innerHTML = items.length ? items.map(cardHtml).join("") : `<p class="empty-msg">No festivals with an approximate location in ${meta.name} match the current filters.</p>`;
+    wireCardActions(els.spBody, items);
+    els.sidePanel.classList.add("open");
+  }
+
   function openNationalPanel() {
+    state.sidePanelKind = "national";
     state.sidePanelFips = null;
     state.selectedFips = null;
     const items = currentFilteredAgents().filter((a) => a.isNational);
@@ -479,16 +595,22 @@
 
   function closeSidePanel() {
     state.sidePanelFips = null;
+    state.sidePanelKind = null;
     els.sidePanel.classList.remove("open");
   }
   els.spClose.addEventListener("click", () => { closeSidePanel(); resetZoom(); });
 
+  function effectiveFips(item) { return item.stateFips ?? item.approxStateFips ?? null; }
+
   function cardHtml(item) {
     const inRoute = state.route.some((r) => r.id === item.id);
+    const approxNote = !item.stateName && item.approxStateName
+      ? `<p class="sub" style="color:var(--ls-gold-light);">~ ${escapeHtml(item.approxStateName)} <i style="color:var(--ls-text-muted);">(approx., via area code)</i></p>` : "";
     return `
       <div class="card" data-id="${item.id}">
         <h3>${escapeHtml(item.name)}</h3>
         ${item.subtitle ? `<p class="sub">${escapeHtml(item.subtitle)}</p>` : ""}
+        ${approxNote}
         ${item.genresText ? `<p class="genres">${escapeHtml(item.genresText)}</p>` : ""}
         <div class="row-actions">
           <button type="button" data-action="contact">Contact &amp; email</button>
@@ -560,7 +682,7 @@
         <div class="num">${i + 1}</div>
         <div class="info">
           <div class="name">${escapeHtml(r.name)}</div>
-          <div class="loc">${escapeHtml(r.stateName || r.subtitle || (r.type === "festival" ? "Location not mapped" : "National"))}</div>
+          <div class="loc">${escapeHtml(r.stateName || (r.approxStateName ? `~${r.approxStateName} (approx.)` : null) || r.subtitle || (r.type === "festival" ? "Location not mapped" : "National"))}</div>
         </div>
         <input type="date" value="${r.date || ""}" data-date-id="${r.id}">
         <div class="stop-actions">
@@ -580,15 +702,15 @@
   }
 
   function drawRouteOnMap() {
-    const stops = state.route.filter((r) => r.stateFips != null);
-    const pts = stops.map((r) => centroidFor(r.stateFips)).filter(Boolean);
+    const stops = state.route.filter((r) => effectiveFips(r) != null);
+    const pts = stops.map((r) => centroidFor(effectiveFips(r))).filter(Boolean);
     routeLayer.selectAll("*").remove();
     if (pts.length > 1) {
       const line = d3.line().curve(d3.curveCatmullRom.alpha(0.7));
       routeLayer.append("path").attr("class", "route-line").attr("d", line(pts));
     }
     stops.forEach((r, i) => {
-      const c = centroidFor(r.stateFips);
+      const c = centroidFor(effectiveFips(r));
       if (!c) return;
       routeLayer.append("circle").attr("class", "route-node").attr("cx", c[0]).attr("cy", c[1]).attr("r", 6);
       routeLayer.append("text").attr("class", "route-node-num").attr("x", c[0]).attr("y", c[1] + 2).text(i + 1);
