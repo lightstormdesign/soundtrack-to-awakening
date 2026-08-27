@@ -41,7 +41,7 @@
 
     <div class="main-area">
       <div class="map-stage">
-        <svg id="us-map" viewBox="0 0 975 610" preserveAspectRatio="xMidYMid meet"></svg>
+        <svg id="us-map" viewBox="0 0 975 610" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Interactive map of the United States. Tab through states or use search to find booking agents and festivals; press Enter on a state to see its contacts."></svg>
       </div>
 
       <!-- Festival mode uses this scroll list instead of pins -->
@@ -55,7 +55,7 @@
   <div class="tooltip" id="tooltip"></div>
 
   <!-- State / list detail panel -->
-  <aside class="side-panel" id="sidePanel">
+  <aside class="side-panel" id="sidePanel" role="dialog" aria-modal="true" aria-labelledby="spTitle">
     <div class="sp-head">
       <div>
         <h2 id="spTitle">—</h2>
@@ -68,10 +68,12 @@
 
   <!-- Route planner -->
   <button class="route-toggle-btn" id="routeToggleBtn" type="button">Route (<span id="routeBtnCount">0</span>)</button>
-  <div class="route-drawer" id="routeDrawer">
+  <div class="route-drawer" id="routeDrawer" role="dialog" aria-modal="false" aria-label="Your tour route">
     <div class="rd-head">
       <h2>Your Tour Route</h2>
       <div class="rd-head-actions">
+        <button class="icon-btn" id="shareRouteBtn" type="button">Share link</button>
+        <button class="icon-btn" id="printRouteBtn" type="button">Print itinerary</button>
         <button class="icon-btn" id="exportRouteBtn" type="button">Export CSV</button>
         <button class="icon-btn" id="clearRouteBtn" type="button">Clear all</button>
         <button class="sp-close" id="routeCloseBtn" aria-label="Close">&times;</button>
@@ -82,16 +84,17 @@
 
   <!-- Contact / email modal -->
   <div class="modal-overlay" id="modalOverlay">
-    <div class="modal" id="modalContent"></div>
+    <div class="modal" id="modalContent" role="dialog" aria-modal="true" tabindex="-1"></div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="vendor/d3.min.js"></script>
   <script src="vendor/topojson-client.min.js"></script>
   <script src="data/template-data.js"></script>
   <script src="data/area-codes.js"></script>
   <script src="data/state-centers.js"></script>
+  <script src="data/festival-overrides.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

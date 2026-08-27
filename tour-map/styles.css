@@ -131,7 +131,8 @@ a{color:var(--ls-gold-light);}
   fill:#0c0c0c; stroke:rgba(245,243,238,0.55); stroke-width:0.6; cursor:pointer;
   transition:fill 200ms ease, stroke 200ms ease, opacity 250ms ease;
 }
-.state-path:hover{fill:#161616; stroke:var(--ls-gold-light);}
+.state-path:hover, .state-path:focus-visible{fill:#161616; stroke:var(--ls-gold-light);}
+.state-path:focus-visible{outline:2px solid var(--ls-gold); outline-offset:1px;}
 .state-path.dimmed{opacity:0.25;}
 .state-path.selected{fill:#1a1508; stroke:var(--ls-gold);}
 
@@ -260,6 +261,13 @@ a{color:var(--ls-gold-light);}
   font-size:0.65rem; color:var(--ls-text-muted); padding:2px 0 8px 34px; letter-spacing:0.02em;
 }
 .route-leg-unknown{font-style:italic;}
+.route-suggestions{border-top:1px solid var(--line); margin-top:14px; padding-top:12px;}
+.route-suggestions-title{margin:0; font-size:0.65rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--ls-gold);}
+.shared-route-banner{
+  border:1px solid rgba(212,175,55,0.4); background:rgba(212,175,55,0.06); border-radius:12px;
+  padding:14px 16px; margin-bottom:14px;
+}
+.shared-route-banner p{margin:0 0 10px; font-size:0.8rem; color:var(--ls-text);}
 .route-summary{
   font-size:0.68rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--ls-gold-light);
   text-align:center; margin:0 0 12px;
