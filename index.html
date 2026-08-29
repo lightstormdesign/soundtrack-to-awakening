@@ -688,8 +688,13 @@
   // as a fallback for browsers/in-app webviews that don't fire it. Fires
   // fresh on every return trip — dismissing it doesn't suppress the next one.
   //
-  // TODO: paste the real GoHighLevel inbound webhook URL here once created.
-  var GHL_WEBHOOK_URL = '';
+  // Stores to the LightStorm admin (lightstorm.co/admin -> "Soundtrack
+  // Leads") only, for now — deliberately no GHL workflow yet.
+  // CONFIRM: this assumes lightstorm.co reverse-proxies /api to its FastAPI
+  // backend on the same origin (the standard Emergent-platform layout). If
+  // the live backend is actually on a separate domain, change this to that
+  // domain instead.
+  var LIGHTSTORM_API_BASE = 'https://lightstorm.co';
 
   var returnPopup = document.getElementById('returnPopup');
   var popupForm = document.getElementById('popupForm');
@@ -740,13 +745,11 @@
     }
     popupPhone.classList.remove('invalid');
 
-    if (GHL_WEBHOOK_URL) {
-      fetch(GHL_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone, source: 'soundtrack-to-awakening-return-popup' })
-      }).catch(function(){});
-    }
+    fetch(LIGHTSTORM_API_BASE + '/api/soundtrack-lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone })
+    }).catch(function(){});
 
     returnPopup.classList.add('submitted');
     setTimeout(closePopup, 2600);
