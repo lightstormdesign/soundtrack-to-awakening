@@ -689,12 +689,9 @@
   // fresh on every return trip — dismissing it doesn't suppress the next one.
   //
   // Stores to the LightStorm admin (lightstorm.co/admin -> "Soundtrack
-  // Leads") only, for now — deliberately no GHL workflow yet.
-  // CONFIRM: this assumes lightstorm.co reverse-proxies /api to its FastAPI
-  // backend on the same origin (the standard Emergent-platform layout). If
-  // the live backend is actually on a separate domain, change this to that
-  // domain instead.
-  var LIGHTSTORM_API_BASE = 'https://lightstorm.co';
+  // Leads") only, for now — deliberately no GHL workflow yet. Backend is
+  // hosted on Render, confirmed via the live service's Settings page.
+  var LIGHTSTORM_API_BASE = 'https://lightstorm-backend.onrender.com';
 
   var returnPopup = document.getElementById('returnPopup');
   var popupForm = document.getElementById('popupForm');
