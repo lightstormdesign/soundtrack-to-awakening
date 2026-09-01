@@ -84,6 +84,14 @@
 
   /* ---------------- helpers (mirrors lightstorm.co/directory) ---------------- */
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // Scraped source data sometimes has a real address followed by leftover
+  // junk from a misaligned column or a second contact (e.g. "info@x.com
+  // New", "a@x.com – Jane Doe (Artist Relations", ": a@x.com b@y.com") —
+  // the strict full-string EMAIL_RE above rejects the whole field in those
+  // cases even though a valid address is sitting right there. This looser
+  // pattern is only used as a fallback, to pull that first address out
+  // rather than discard it (recovers ~213 otherwise-lost festival emails).
+  const EMAIL_FIND_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
   const cleanStr = (s) => (typeof s === "string" && s.trim() ? s.trim() : null);
   const cleanPhone = (s) => {
     const v = cleanStr(s);
@@ -92,7 +100,9 @@
   const cleanEmail = (raw) => {
     if (!raw) return null;
     const first = raw.split("/")[0].trim();
-    return EMAIL_RE.test(first) ? first : null;
+    if (EMAIL_RE.test(first)) return first;
+    const match = first.match(EMAIL_FIND_RE);
+    return match ? match[0] : null;
   };
   const websiteHref = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
   const websiteLabel = (url) => url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
