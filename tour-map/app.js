@@ -817,7 +817,7 @@
         <div class="row-actions">
           <button type="button" data-action="contact">Contact &amp; email</button>
           <button type="button" data-action="route" class="${inRoute ? "added" : ""}">${inRoute ? "✓ In route" : "+ Add to route"}</button>
-          ${item.website ? `<a href="${websiteHref(item.website)}" target="_blank" rel="noopener noreferrer">${websiteLabel(item.website)}</a>` : ""}
+          ${item.website ? `<a href="${escapeHtml(websiteHref(item.website))}" target="_blank" rel="noopener noreferrer">${escapeHtml(websiteLabel(item.website))}</a>` : ""}
         </div>
       </div>`;
   }
@@ -1265,8 +1265,8 @@
         <div class="row-actions">
           ${item.email ? `<span>${escapeHtml(item.email)}</span>` : `<span style="color:var(--ls-text-muted)">No email on file</span>`}
           ${item.phone ? `<span>${escapeHtml(item.phone)}</span>` : ""}
-          ${item.website ? `<a href="${websiteHref(item.website)}" target="_blank" rel="noopener noreferrer">${websiteLabel(item.website)}</a>` : ""}
-          ${item.links.map((l) => `<a href="${l.href}" target="_blank" rel="noopener noreferrer">${l.label}</a>`).join("")}
+          ${item.website ? `<a href="${escapeHtml(websiteHref(item.website))}" target="_blank" rel="noopener noreferrer">${escapeHtml(websiteLabel(item.website))}</a>` : ""}
+          ${item.links.map((l) => `<a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a>`).join("")}
         </div>
       </div>
 
