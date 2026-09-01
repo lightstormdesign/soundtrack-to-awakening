@@ -112,12 +112,24 @@
     const cleaned = v.replace(/^phone:?\s*/i, "").trim();
     if (!cleaned) return null;
     const { prefix, hadJunk } = stripColumnShiftJunk(cleaned);
-    if (!hadJunk) return prefix || null;
-    // Only keep the stripped prefix if it's still a complete-looking phone
-    // number on its own — a few of these were truncated mid-digit along
-    // with the junk (e.g. "+1-828-686-874"), and a broken number is worse
-    // than none.
-    return PHONE_RE.test(prefix) ? prefix : null;
+    if (hadJunk) {
+      // Only keep the stripped prefix if it's still a complete-looking
+      // phone number on its own — a few of these were truncated mid-digit
+      // along with the junk (e.g. "+1-828-686-874"), and a broken number
+      // is worse than none.
+      return PHONE_RE.test(prefix) ? prefix : null;
+    }
+    // No junk gap doesn't mean the field is trustworthy on its own: 51
+    // festivals have a contact-page URL sitting in the phone field outright
+    // (e.g. "https://homesteadhollow.com/contact/"), which would otherwise
+    // render as inert, misleading plain text where a phone number is
+    // expected. Deliberately loose beyond that — real phone numbers here
+    // include vanity numbers ("+1-386-362-FAIR"), international ones
+    // ("+423 775 98 47"), and typo'd separators PHONE_RE won't match, and
+    // those are still worth showing as-is rather than requiring strict
+    // NANP shape.
+    if (!prefix || /^[a-z][a-z0-9+.-]*:/i.test(prefix) || !/\d/.test(prefix)) return null;
+    return prefix;
   };
   const cleanEmail = (raw) => {
     if (!raw) return null;
