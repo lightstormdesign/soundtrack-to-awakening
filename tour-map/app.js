@@ -1240,25 +1240,33 @@
     const subject = "Touring your area — quick note";
     let body = tpl.REFERENCE_TEMPLATE;
     if (p.artistName) body = body.split("[Your Name]").join(p.artistName);
-    if (p.phone) body = body.replace("[phone]", p.phone);
+    if (p.phone) body = body.replace("[phone]", () => p.phone);
     const gmailUrl = item.email
       ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(item.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
       : null;
     const mailtoUrl = item.email
       ? `mailto:${encodeURIComponent(item.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
       : null;
+    // Every value here is free-typed by the artist (or scraped festival
+    // data) with no restriction on its characters — passing it as
+    // String.replace()'s second argument directly would treat a literal
+    // "$&", "$$", "$`", "$'" or "$1"-"$99" in it as a special replacement
+    // pattern (e.g. "$5k/show" as a stat would silently vanish and dump
+    // unrelated prompt text in its place) instead of literal text. Wrapping
+    // each value in a function opts out of that substitution entirely.
+    const lit = (v) => () => v;
     const aiPrompt = tpl.AI_PROMPT_TEMPLATE
-      .replace("{{EVENT_NAME}}", item.name)
-      .replace("{{EVENT_WEBSITE}}", item.website || "not listed")
-      .replace("{{MY_NAME_GENRE}}", p.nameGenre || "")
-      .replace("{{MY_STAT}}", p.stat || "")
-      .replace("{{MY_FESTIVALS}}", p.festivals || "")
-      .replace("{{MY_ARTISTS}}", p.artists || "")
-      .replace("{{MY_MOMENTUM}}", p.momentum || "")
-      .replace("{{MY_SECONDARY}}", p.secondary || "")
-      .replace("{{MY_PROMO_LINK}}", p.promoLink || "")
-      .replace("{{MY_INSTAGRAM_EPK}}", p.instagramEpk || "")
-      .replace("{{MY_PHONE}}", p.phone || "");
+      .replace("{{EVENT_NAME}}", lit(item.name))
+      .replace("{{EVENT_WEBSITE}}", lit(item.website || "not listed"))
+      .replace("{{MY_NAME_GENRE}}", lit(p.nameGenre || ""))
+      .replace("{{MY_STAT}}", lit(p.stat || ""))
+      .replace("{{MY_FESTIVALS}}", lit(p.festivals || ""))
+      .replace("{{MY_ARTISTS}}", lit(p.artists || ""))
+      .replace("{{MY_MOMENTUM}}", lit(p.momentum || ""))
+      .replace("{{MY_SECONDARY}}", lit(p.secondary || ""))
+      .replace("{{MY_PROMO_LINK}}", lit(p.promoLink || ""))
+      .replace("{{MY_INSTAGRAM_EPK}}", lit(p.instagramEpk || ""))
+      .replace("{{MY_PHONE}}", lit(p.phone || ""));
     const hasProfile = PROFILE_FIELDS.some((f) => p[f.key]);
 
     els.modalContent.innerHTML = `
