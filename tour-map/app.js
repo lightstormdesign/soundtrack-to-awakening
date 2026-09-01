@@ -156,6 +156,21 @@
     }
     return prefix;
   };
+  // A separate corruption pattern from the space-gap one above: ~300 names
+  // are entirely a URL path fragment with no space at all (a Facebook page
+  // ID, a Google Form link, a ".../contact.html" tail) — the *whole* raw
+  // field, sitting where a real name belongs. stripColumnShiftJunk can't
+  // catch these (there's no 2+-space gap to key off), so it needs its own
+  // check. A real "A / B" dual-name ("Fur Rondy / Fur Rendezvous") is the
+  // one legitimate case with a slash, distinguished by the spaces around
+  // it — everything else with a bare "word/word" slash is a URL path.
+  function looksLikeUrlFragment(name) {
+    if (/[a-z0-9]\/[a-z0-9]/i.test(name) && !/ \/ /.test(name)) return true;
+    if (/\d{6,}/.test(name)) return true;
+    if (/\.(html?|php|shtml|aspx?)\b/i.test(name)) return true;
+    if (/viewform|webforms?|contact[-.]?(us|form)?$/i.test(name)) return true;
+    return false;
+  }
   // Same idea for festival names, but a name can't just be dropped when the
   // cleanup isn't confident (the UI needs *something* to show as the card
   // title) — so an uncertain one falls back to the untouched original
@@ -164,8 +179,10 @@
     const v = cleanStr(raw);
     if (!v) return { name: "Untitled festival", nameUncertain: false };
     const { prefix, hadJunk } = stripColumnShiftJunk(v);
-    if (!hadJunk) return { name: prefix, nameUncertain: false };
-    const looksComplete = prefix.length >= 8 && /[a-zA-Z]{3,}/.test(prefix);
+    if (!hadJunk) {
+      return looksLikeUrlFragment(prefix) ? { name: v, nameUncertain: true } : { name: prefix, nameUncertain: false };
+    }
+    const looksComplete = prefix.length >= 8 && /[a-zA-Z]{3,}/.test(prefix) && !looksLikeUrlFragment(prefix);
     return looksComplete ? { name: prefix, nameUncertain: false } : { name: v, nameUncertain: true };
   }
   const websiteHref = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
@@ -278,6 +295,7 @@
     return {
       id: `agency-${i}`, type: "agent", name: a.name, subtitle: subtitle || null,
       genresText, email: cleanEmail(a.email), website, phone: cleanPhone(a.phone), links,
+      contactForm: cleanWebsiteField(a.contact_form),
       isNational, stateFips, stateName: !isNational ? cleanStr(a.state) : null,
       dupCount: a.__dupCount || 0,
       searchIndex: [a.name, genresText, subtitle, website].filter(Boolean).join(" ").toLowerCase(),
@@ -309,6 +327,9 @@
     return {
       id: `festival-${i}`, type: "festival", name, nameUncertain, subtitle,
       genresText: null, email: cleanEmail(f.email), website, phone: cleanPhone(f.phone), links,
+      // 37 festivals have no email and no website but DO have a contact-
+      // form URL — previously invisible dead data, the only lead they had.
+      contactForm: cleanWebsiteField(f.contact_form),
       isNational: false,
       stateFips: verifiedState ? NAME_TO_FIPS.get(verifiedState.toLowerCase()) ?? null : null,
       stateName: verifiedState,
@@ -913,6 +934,7 @@
           <button type="button" data-action="contact">Contact &amp; email</button>
           <button type="button" data-action="route" class="${inRoute ? "added" : ""}">${inRoute ? "✓ In route" : "+ Add to route"}</button>
           ${item.website ? `<a href="${escapeHtml(websiteHref(item.website))}" target="_blank" rel="noopener noreferrer">${escapeHtml(websiteLabel(item.website))}</a>` : ""}
+          ${item.contactForm ? `<a href="${escapeHtml(websiteHref(item.contactForm))}" target="_blank" rel="noopener noreferrer">Contact form</a>` : ""}
         </div>
       </div>`;
   }
@@ -1375,6 +1397,7 @@
           ${item.email ? `<span>${escapeHtml(item.email)}</span>` : `<span style="color:var(--ls-text-muted)">No email on file</span>`}
           ${item.phone ? `<span>${escapeHtml(item.phone)}</span>` : ""}
           ${item.website ? `<a href="${escapeHtml(websiteHref(item.website))}" target="_blank" rel="noopener noreferrer">${escapeHtml(websiteLabel(item.website))}</a>` : ""}
+          ${item.contactForm ? `<a href="${escapeHtml(websiteHref(item.contactForm))}" target="_blank" rel="noopener noreferrer">Contact form</a>` : ""}
           ${item.links.map((l) => `<a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a>`).join("")}
         </div>
       </div>
