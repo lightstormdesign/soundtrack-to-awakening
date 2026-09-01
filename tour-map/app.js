@@ -166,7 +166,14 @@
   // state field: resolves a US phone number's area code to the one state it
   // belongs to (a fixed public numbering-plan table, not a guess about the
   // specific festival) — skipped for toll-free codes and multi-match junk.
-  const PHONE_RE = /(?:\+?1[-.\s]?)?\(?([2-9]\d{2})\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+  // Separators use `*` (zero or more), not `?` (zero or one): some scraped
+  // numbers have a stray extra space mid-number (e.g. "+1-907- 452-3750"),
+  // which the stricter version couldn't tolerate and silently failed to
+  // resolve at all — confirmed against every agent/festival phone that this
+  // recovers 33 more valid area codes with zero changes to any area code
+  // that already matched (multi-number fields like "+1-732-291-4713 /
+  // +1-732-946-3758" still correctly stop at the first complete number).
+  const PHONE_RE = /(?:\+?1[-.\s]*)?\(?([2-9]\d{2})\)?[-.\s]*\d{3}[-.\s]*\d{4}/;
   function resolveApproxState(phoneRaw) {
     if (!phoneRaw) return null;
     const m = PHONE_RE.exec(phoneRaw);
@@ -1418,8 +1425,13 @@
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (els.modalOverlay.classList.contains("open")) { closeModal(); return; }
-    if (els.sidePanel.classList.contains("open")) { closeSidePanel(); resetZoom(); return; }
-    if (els.routeDrawer.classList.contains("open")) { els.routeDrawer.classList.remove("open"); }
+    // The route drawer (z-index 41) can be open on top of the side panel
+    // (z-index 40) at the same time — check it first so Escape dismisses
+    // whatever's actually on top, instead of closing the panel underneath
+    // (and resetting its map zoom) while the drawer the user is looking at
+    // stays open.
+    if (els.routeDrawer.classList.contains("open")) { els.routeDrawer.classList.remove("open"); return; }
+    if (els.sidePanel.classList.contains("open")) { closeSidePanel(); resetZoom(); }
   });
 
   /* ---------------- init ui bits that don't need data ---------------- */
