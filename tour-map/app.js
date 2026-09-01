@@ -868,6 +868,11 @@
     saveRoute();
     renderRouteUi();
     drawRouteOnMap();
+    // The side panel / festival grid can be open behind the route drawer at
+    // the same time (nothing closes one when the other opens) — without
+    // this, a card removed here keeps showing a stale "✓ In route" pill
+    // until something else forces that panel to re-render.
+    renderAll();
   }
   function moveStop(id, dir) {
     const i = state.route.findIndex((r) => r.id === id);
@@ -1145,6 +1150,7 @@
     saveRoute();
     renderRouteUi();
     drawRouteOnMap();
+    renderAll(); // same staleness reason as removeFromRoute above
   });
 
   /* ---------------- Artist profile ---------------- */

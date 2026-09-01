@@ -277,9 +277,17 @@ a{color:var(--ls-gold-light);}
   position:fixed; right:18px; bottom:18px; z-index:42; border-radius:999px; border:1px solid var(--ls-gold);
   background:var(--ls-gold); color:#111; padding:12px 20px; font-family:'Outfit'; font-size:0.72rem;
   letter-spacing:0.1em; text-transform:uppercase; cursor:pointer; box-shadow:0 8px 24px rgba(212,175,55,0.25);
-  transition:transform 200ms ease;
+  transition:transform 200ms ease, opacity 200ms ease;
 }
 .route-toggle-btn:hover{transform:translateY(-2px);}
+/* The drawer it opens is itself fixed to the bottom of the viewport at up
+   to 46vh tall, which overlaps this button's own corner — without this,
+   the toggle sits on top of the last visible route stop's ↑/↓/× buttons
+   (and can intercept clicks meant for them) the whole time the drawer is
+   open. :has() lets this stay CSS-only despite the toggle button coming
+   before the drawer in the markup (a floating trigger placed next to its
+   own panel, not after it). */
+body:has(.route-drawer.open) .route-toggle-btn{opacity:0; pointer-events:none;}
 
 /* ---------- Festival list mode ---------- */
 .festival-grid{
