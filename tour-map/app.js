@@ -129,8 +129,13 @@
   const cleanWebsiteField = (raw) => {
     const v = cleanStr(raw);
     if (!v) return null;
-    const { prefix, hadJunk } = stripColumnShiftJunk(v);
-    if (!hadJunk) return prefix || null;
+    // Validate unconditionally, not just when stripColumnShiftJunk actually
+    // found something to strip: some website/social fields are garbage in
+    // their *entirety* — a bare truncated fragment like "Web:", "http", or
+    // a single stray letter, with no 2+-space gap for stripColumnShiftJunk
+    // to have keyed off in the first place. Those would otherwise sail
+    // through as an unclickable-in-practice "website" link.
+    const { prefix } = stripColumnShiftJunk(v);
     if (!/\.[a-z]{2,}/i.test(prefix)) return null;
     try {
       new URL(/^https?:\/\//i.test(prefix) ? prefix : `https://${prefix}`);
