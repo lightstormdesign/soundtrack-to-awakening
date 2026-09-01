@@ -93,9 +93,31 @@
   // rather than discard it (recovers ~213 otherwise-lost festival emails).
   const EMAIL_FIND_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
   const cleanStr = (s) => (typeof s === "string" && s.trim() ? s.trim() : null);
+
+  // Same root cause as EMAIL_FIND_RE above, but bigger: ~10% of festivals.json
+  // has its name/website/phone fields (real data, presumably valid in the
+  // original source) run together with a fragment of an unrelated field
+  // after 2+ spaces — a column-misalignment artifact from wherever this was
+  // scraped, e.g. "Winter Park Brew Fest    Web: https://..." or, worse,
+  // "3                    Inst" where even the surviving prefix is a
+  // meaningless fragment. Splits off whatever comes after that gap; callers
+  // decide whether the remainder is trustworthy enough to use.
+  function stripColumnShiftJunk(raw) {
+    const m = raw.match(/^([\s\S]*?)\s{2,}\S/);
+    return m ? { prefix: m[1].trim(), hadJunk: true } : { prefix: raw.trim(), hadJunk: false };
+  }
   const cleanPhone = (s) => {
     const v = cleanStr(s);
-    return v ? v.replace(/^phone:?\s*/i, "").trim() || null : null;
+    if (!v) return null;
+    const cleaned = v.replace(/^phone:?\s*/i, "").trim();
+    if (!cleaned) return null;
+    const { prefix, hadJunk } = stripColumnShiftJunk(cleaned);
+    if (!hadJunk) return prefix || null;
+    // Only keep the stripped prefix if it's still a complete-looking phone
+    // number on its own — a few of these were truncated mid-digit along
+    // with the junk (e.g. "+1-828-686-874"), and a broken number is worse
+    // than none.
+    return PHONE_RE.test(prefix) ? prefix : null;
   };
   const cleanEmail = (raw) => {
     if (!raw) return null;
@@ -104,6 +126,31 @@
     const match = first.match(EMAIL_FIND_RE);
     return match ? match[0] : null;
   };
+  const cleanWebsiteField = (raw) => {
+    const v = cleanStr(raw);
+    if (!v) return null;
+    const { prefix, hadJunk } = stripColumnShiftJunk(v);
+    if (!hadJunk) return prefix || null;
+    if (!/\.[a-z]{2,}/i.test(prefix)) return null;
+    try {
+      new URL(/^https?:\/\//i.test(prefix) ? prefix : `https://${prefix}`);
+    } catch {
+      return null;
+    }
+    return prefix;
+  };
+  // Same idea for festival names, but a name can't just be dropped when the
+  // cleanup isn't confident (the UI needs *something* to show as the card
+  // title) — so an uncertain one falls back to the untouched original
+  // string, flagged, rather than a possibly-wrong guess at where it ends.
+  function cleanFestivalName(raw) {
+    const v = cleanStr(raw);
+    if (!v) return { name: "Untitled festival", nameUncertain: false };
+    const { prefix, hadJunk } = stripColumnShiftJunk(v);
+    if (!hadJunk) return { name: prefix, nameUncertain: false };
+    const looksComplete = prefix.length >= 8 && /[a-zA-Z]{3,}/.test(prefix);
+    return looksComplete ? { name: prefix, nameUncertain: false } : { name: v, nameUncertain: true };
+  }
   const websiteHref = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
   const websiteLabel = (url) => url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
   const socialLabel = (url) => {
@@ -201,7 +248,7 @@
       ? [cleanStr(a.category), cleanStr(a.regions)].filter(Boolean).join(" · ")
       : [cleanStr(a.city), cleanStr(a.state)].filter(Boolean).join(", ");
     const genresText = cleanStr(isNational ? a.genres_listed : a.genres);
-    const website = cleanStr(a.website);
+    const website = cleanWebsiteField(a.website);
     const links = (!isNational && Array.isArray(a.socials) ? a.socials : [])
       .map(cleanStr).filter(Boolean).map((href) => ({ label: socialLabel(href), href }));
     return {
@@ -214,18 +261,18 @@
   }
 
   function normalizeFestival(f, i) {
-    const website = cleanStr(f.website);
+    const website = cleanWebsiteField(f.website);
     const links = [
-      f.facebook ? { label: "Facebook", href: cleanStr(f.facebook) } : null,
-      f.instagram ? { label: "Instagram", href: cleanStr(f.instagram) } : null,
-      f.twitter ? { label: "Twitter", href: cleanStr(f.twitter) } : null,
+      f.facebook ? { label: "Facebook", href: cleanWebsiteField(f.facebook) } : null,
+      f.instagram ? { label: "Instagram", href: cleanWebsiteField(f.instagram) } : null,
+      f.twitter ? { label: "Twitter", href: cleanWebsiteField(f.twitter) } : null,
     ].filter((l) => l && l.href);
     const subtitle = cleanStr(f.month);
-    const name = cleanStr(f.name) || "Untitled festival";
+    const { name, nameUncertain } = cleanFestivalName(f.name);
     const verifiedState = window.LS_FESTIVAL_OVERRIDES?.[name] || null;
     const approx = resolveApproxState(f.phone);
     return {
-      id: `festival-${i}`, type: "festival", name, subtitle,
+      id: `festival-${i}`, type: "festival", name, nameUncertain, subtitle,
       genresText: null, email: cleanEmail(f.email), website, phone: cleanPhone(f.phone), links,
       isNational: false,
       stateFips: verifiedState ? NAME_TO_FIPS.get(verifiedState.toLowerCase()) ?? null : null,
@@ -812,6 +859,8 @@
       ? `<p class="sub" style="color:var(--ls-gold-light);">~ ${escapeHtml(item.approxStateName)} <i style="color:var(--ls-text-muted);">(approx., via area code)</i></p>` : "";
     const dupNote = item.dupCount > 0
       ? `<p class="sub" style="color:var(--ls-text-muted);font-size:10px;">merged ${item.dupCount} duplicate listing${item.dupCount === 1 ? "" : "s"}</p>` : "";
+    const nameUncertainNote = item.nameUncertain
+      ? `<p class="sub" style="color:var(--ls-text-muted);font-size:10px;">name may be garbled in source data</p>` : "";
     const status = getContactStatus(item.id);
     return `
       <div class="card" data-id="${item.id}">
@@ -819,6 +868,7 @@
           <h3>${escapeHtml(item.name)}</h3>
           <button type="button" data-action="status" class="status-pill status-${status}" title="Click to change outreach status">${CONTACT_STATUSES.find((s) => s.key === status).label}</button>
         </div>
+        ${nameUncertainNote}
         ${item.subtitle ? `<p class="sub">${escapeHtml(item.subtitle)}</p>` : ""}
         ${confirmedNote}
         ${approxNote}
