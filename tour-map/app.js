@@ -292,8 +292,16 @@
     const website = cleanWebsiteField(a.website);
     const links = (!isNational && Array.isArray(a.socials) ? a.socials : [])
       .map(cleanStr).filter(Boolean).map((href) => ({ label: socialLabel(href), href }));
+    // 16 agents have a bare URL as their "name" (e.g.
+    // "https://www.unitedtalent.com/") instead of the agency's actual
+    // name. Deliberately narrow (only an unambiguous http(s):// prefix) —
+    // agents.json has real agency names with slashes in them (e.g.
+    // "Bass/Schuler Entertainment") and even one literally named
+    // "Musicians Contact", which festivals.json's broader
+    // looksLikeUrlFragment() would wrongly flag here.
+    const nameUncertain = /^https?:\/\//i.test((a.name || "").trim());
     return {
-      id: `agency-${i}`, type: "agent", name: a.name, subtitle: subtitle || null,
+      id: `agency-${i}`, type: "agent", name: a.name, nameUncertain, subtitle: subtitle || null,
       genresText, email: cleanEmail(a.email), website, phone: cleanPhone(a.phone), links,
       contactForm: cleanWebsiteField(a.contact_form),
       isNational, stateFips, stateName: !isNational ? cleanStr(a.state) : null,
