@@ -1075,14 +1075,21 @@
     renderRouteUi();
   }
 
+  // Shared-route stops carry no stable id (shareRoute() strips it down to
+  // name/type/state/date/email/website, and each import mints a fresh
+  // `imported-${Date.now()}-i}` id) — so "already in your route" has to be
+  // decided by content, not id equality, or re-opening the same share link
+  // silently duplicates every stop on each import.
   function importSharedRoute() {
     if (!state.sharedRoute) return;
-    const existingIds = new Set(state.route.map((r) => r.id));
+    const sig = (r) => `${(r.name || "").toLowerCase()}|${r.type}|${(r.stateName || r.approxStateName || "").toLowerCase()}`;
+    const existingSigs = new Set(state.route.map(sig));
     let added = 0;
     state.sharedRoute.forEach((r, i) => {
+      if (existingSigs.has(sig(r))) return;
       const id = `imported-${Date.now()}-${i}`;
-      if (existingIds.has(id)) return;
       state.route.push({ ...r, id, stateFips: r.stateName ? NAME_TO_FIPS.get(r.stateName.toLowerCase()) ?? null : null, approxStateFips: null, subtitle: null, isNational: false });
+      existingSigs.add(sig(r));
       added++;
     });
     saveRoute();
