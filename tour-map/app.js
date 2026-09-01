@@ -125,10 +125,14 @@
     // render as inert, misleading plain text where a phone number is
     // expected. Deliberately loose beyond that — real phone numbers here
     // include vanity numbers ("+1-386-362-FAIR"), international ones
-    // ("+423 775 98 47"), and typo'd separators PHONE_RE won't match, and
-    // those are still worth showing as-is rather than requiring strict
-    // NANP shape.
-    if (!prefix || /^[a-z][a-z0-9+.-]*:/i.test(prefix) || !/\d/.test(prefix)) return null;
+    // ("+423 775 98 47"), typo'd separators PHONE_RE won't match, and
+    // labels this file's own "phone:" strip above doesn't cover ("PH:
+    // 941-412-0556", "Tel: 424-248-5705", "Austin: 512-266-9966") — all
+    // still worth showing as-is. Checking for "://" specifically (not just
+    // any "word:" prefix, which a first pass here wrongly flagged 57 of
+    // those label-prefixed real numbers as URL-scheme-like) is what
+    // actually distinguishes a URL from a phone number.
+    if (!prefix || /:\/\//.test(prefix) || !/\d/.test(prefix)) return null;
     return prefix;
   };
   const cleanEmail = (raw) => {
