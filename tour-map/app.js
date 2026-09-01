@@ -269,11 +269,22 @@
 
   function normalizeFestival(f, i) {
     const website = cleanWebsiteField(f.website);
+    // Label from the URL's actual domain, not which JSON key it came from —
+    // 26 festivals have a URL for one platform sitting under a different
+    // field (e.g. a twitter.com link stored under "instagram"), a
+    // pre-existing mislabel in the source data that a hardcoded label per
+    // field would just repeat as "Instagram" for a link that opens Twitter.
     const links = [
-      f.facebook ? { label: "Facebook", href: cleanWebsiteField(f.facebook) } : null,
-      f.instagram ? { label: "Instagram", href: cleanWebsiteField(f.instagram) } : null,
-      f.twitter ? { label: "Twitter", href: cleanWebsiteField(f.twitter) } : null,
-    ].filter((l) => l && l.href);
+      f.facebook ? cleanWebsiteField(f.facebook) : null,
+      f.instagram ? cleanWebsiteField(f.instagram) : null,
+      f.twitter ? cleanWebsiteField(f.twitter) : null,
+    ]
+      .filter(Boolean)
+      // 15 festivals have the literal same URL copy-pasted into two of
+      // these three fields — without this they'd render as two identical,
+      // identically-labeled links side by side.
+      .filter((href, idx, arr) => arr.indexOf(href) === idx)
+      .map((href) => ({ label: socialLabel(href), href }));
     const subtitle = cleanStr(f.month);
     const { name, nameUncertain } = cleanFestivalName(f.name);
     const verifiedState = window.LS_FESTIVAL_OVERRIDES?.[name] || null;
