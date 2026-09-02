@@ -33,12 +33,12 @@
 
         <button class="icon-btn" id="nationalBtn" type="button">National Agents <span class="count-badge" id="nationalCount">0</span></button>
         <button class="icon-btn" id="festivalViewToggle" type="button" style="display:none;">Show approx. map <span class="count-badge" id="festivalApproxCount">0</span></button>
-        <button class="icon-btn" id="resourcesBtn" type="button">Tour Resources</button>
         <button class="icon-btn gold" id="profileBtn" type="button">My Profile</button>
       </div>
 
       <div class="chips" id="nicheChips"></div>
       <p class="data-note" id="dataNote"></p>
+      <button type="button" id="resourcesBtn" class="resources-link">🌿 tour resources — springs &amp; high-vibe food</button>
     </header>
 
     <div class="main-area">
@@ -82,6 +82,18 @@
       </div>
     </div>
     <div class="rd-body" id="rdBody"></div>
+  </div>
+
+  <!-- Today's Shots: daily outreach practice -->
+  <button class="shots-toggle-btn" id="shotsBtn" type="button">Today's Shots (<span id="shotsBtnCount">0/3</span>)</button>
+  <div class="route-drawer shots-drawer" id="shotsDrawer" role="dialog" aria-modal="false" aria-label="Today's shots">
+    <div class="rd-head">
+      <h2>Today's Shots</h2>
+      <div class="rd-head-actions">
+        <button class="sp-close" id="shotsCloseBtn" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="rd-body" id="shotsBody"></div>
   </div>
 
   <!-- Contact / email modal -->

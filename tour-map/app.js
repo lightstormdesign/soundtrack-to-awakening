@@ -615,6 +615,158 @@
     if (next === "none") delete state.contacted[id];
     else state.contacted[id] = next;
     saveContacted();
+    // Counts as landing a shot if this is one of today's three, wherever in
+    // the app the status actually got changed — not only from inside the
+    // Today's Shots drawer itself.
+    if (cur === "none" && next !== "none") registerShotIfToday(id);
+    renderShotsUi();
+  }
+
+  /* ---------------- Today's Shots (daily outreach practice) ----------------
+     A tiny, honest gamification loop: 3 concrete outreach actions chosen
+     each day, one tap to take each one, a streak, and a career-growth icon
+     that levels up the more shots land over time. Everything here is pure
+     localStorage bookkeeping on top of the existing contact-status system
+     above — no fan CRM, no AI coach, no external integrations, since none
+     of that is buildable in a static site with no backend. */
+  const GROWTH_STAGES = [
+    { min: 0, key: "seed", label: "Seed" },
+    { min: 3, key: "sprout", label: "Sprout" },
+    { min: 10, key: "sapling", label: "Sapling" },
+    { min: 25, key: "young-tree", label: "Young tree" },
+    { min: 50, key: "tree", label: "Flourishing tree" },
+    { min: 100, key: "grove", label: "Grove" },
+  ];
+  function growthStage(total) {
+    let stage = GROWTH_STAGES[0];
+    for (const s of GROWTH_STAGES) if (total >= s.min) stage = s;
+    const idx = GROWTH_STAGES.indexOf(stage);
+    const next = GROWTH_STAGES[idx + 1] || null;
+    return { ...stage, idx, next };
+  }
+  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function loadJson(key, fallback) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+  }
+  function saveJson(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+
+  // Deterministic per-day "random" so the same 3 shots stay stable across
+  // reloads/tabs until picked fresh tomorrow, without needing a server.
+  function seededShuffle(arr, seed) {
+    let s = 0;
+    for (let i = 0; i < seed.length; i++) s = (s * 31 + seed.charCodeAt(i)) >>> 0;
+    const rand = () => { s = (s * 1103515245 + 12345) >>> 0; return s / 4294967296; };
+    const out = arr.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  function shotCandidatePool() {
+    const nicheKey = autoMatchNiche(state.profile?.nameGenre);
+    const pool = [
+      ...state.agents.filter((a) => !a.isNational && a.stateFips != null),
+      ...state.festivals.filter((f) => effectiveFips(f) != null),
+      ...state.radio,
+    ].filter((item) => getContactStatus(item.id) === "none");
+    if (!nicheKey) return pool;
+    const matched = pool.filter((item) => matchesNiche(item, nicheKey));
+    // Prefer a genre-matched pool, but never starve the feature if too few
+    // matches exist for whatever niche the artist's profile implies.
+    return matched.length >= 6 ? matched : pool;
+  }
+
+  function getTodaysShots() {
+    const saved = loadJson("ls_shots_today", null);
+    if (saved && saved.date === todayStr() && Array.isArray(saved.ids)) return saved.ids;
+    const pool = shotCandidatePool();
+    const picked = seededShuffle(pool, todayStr()).slice(0, 3).map((i) => i.id);
+    saveJson("ls_shots_today", { date: todayStr(), ids: picked });
+    return picked;
+  }
+
+  function registerShotIfToday(id) {
+    const ids = getTodaysShots();
+    if (!ids.includes(id)) return;
+    const counted = new Set(loadJson("ls_shots_counted", []));
+    if (!counted.has(id)) {
+      counted.add(id);
+      saveJson("ls_shots_counted", Array.from(counted));
+      saveJson("ls_total_shots_taken", (loadJson("ls_total_shots_taken", 0)) + 1);
+    }
+    const allDone = ids.every((i) => getContactStatus(i) !== "none");
+    if (allDone) {
+      const streak = loadJson("ls_shot_streak", { count: 0, lastDate: null });
+      if (streak.lastDate !== todayStr()) {
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        streak.count = streak.lastDate === yesterday ? streak.count + 1 : 1;
+        streak.lastDate = todayStr();
+        saveJson("ls_shot_streak", streak);
+        showToast(`3/3 shots landed — ${streak.count} day streak 🔥`);
+      }
+    }
+  }
+
+  function allItemsById(ids) {
+    const all = [...state.agents, ...state.festivals, ...state.radio];
+    return ids.map((id) => all.find((i) => i.id === id)).filter(Boolean);
+  }
+
+  function growthIconSvg(stage, justLeveled) {
+    // One shared plant silhouette; each stage just reveals more of it —
+    // same growth read as a sprite animation without needing image assets
+    // this session has no way to generate. justLeveled adds a brief pulse.
+    const leaves = Math.min(stage.idx, 5);
+    const leafDots = Array.from({ length: leaves }, (_, i) => {
+      const side = i % 2 === 0 ? -1 : 1;
+      const y = 46 - i * 7;
+      return `<circle cx="${32 + side * (5 + i * 1.5)}" cy="${y}" r="${3 + i * 0.4}" fill="var(--ls-gold-light)" opacity="${0.55 + i * 0.08}"/>`;
+    }).join("");
+    const stemHeight = 8 + stage.idx * 7;
+    return `
+      <svg viewBox="0 0 64 64" class="growth-icon${justLeveled ? " leveled" : ""}" aria-hidden="true">
+        <path d="M32 58 C 20 52, 18 40, 32 ${58 - stemHeight}" stroke="var(--ls-gold)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        ${leafDots}
+        <circle cx="32" cy="58" r="3" fill="var(--ls-gold)"/>
+      </svg>`;
+  }
+
+  let lastRenderedStageIdx = growthStage(loadJson("ls_total_shots_taken", 0)).idx;
+  function renderShotsUi() {
+    if (!els.shotsBtn) return;
+    const ids = getTodaysShots();
+    const items = allItemsById(ids);
+    const doneCount = items.filter((i) => getContactStatus(i.id) !== "none").length;
+    const total = loadJson("ls_total_shots_taken", 0);
+    const streak = loadJson("ls_shot_streak", { count: 0, lastDate: null });
+    const stage = growthStage(total);
+    const justLeveled = stage.idx > lastRenderedStageIdx;
+    lastRenderedStageIdx = stage.idx;
+
+    els.shotsBtnCount.textContent = `${doneCount}/3`;
+    els.shotsBtn.classList.toggle("all-done", doneCount === items.length && items.length > 0);
+
+    if (!els.shotsDrawer.classList.contains("open")) return;
+    const toNextLabel = stage.next
+      ? `${stage.next.min - total} more shot${stage.next.min - total === 1 ? "" : "s"} to reach ${stage.next.label}`
+      : "You've reached the top growth stage — keep the streak alive.";
+    els.shotsBody.innerHTML = `
+      <div class="shots-growth">
+        ${growthIconSvg(stage, justLeveled)}
+        <div class="shots-growth-text">
+          <div class="shots-stage-label">${escapeHtml(stage.label)}</div>
+          <div class="shots-substat">${total} shot${total === 1 ? "" : "s"} taken · ${streak.count} day streak${streak.count >= 1 ? " 🔥" : ""}</div>
+          <div class="shots-substat">${escapeHtml(toNextLabel)}</div>
+        </div>
+      </div>
+      <p class="shots-intro">${doneCount === items.length && items.length > 0
+        ? "3/3 landed — nice work today. Come back tomorrow for three more."
+        : "Three real outreach shots for today. One tap to open each — mark it Emailed or Booked to land the shot."}</p>
+      ${items.length ? items.map(cardHtml).join("") : `<p class="empty-msg">No fresh, uncontacted matches left right now — check back tomorrow.</p>`}
+    `;
+    wireCardActions(els.shotsBody, items);
   }
 
   /* ---------------- Boot ---------------- */
@@ -650,6 +802,11 @@
     shareRouteBtn: document.getElementById("shareRouteBtn"),
     printRouteBtn: document.getElementById("printRouteBtn"),
     routeCloseBtn: document.getElementById("routeCloseBtn"),
+    shotsBtn: document.getElementById("shotsBtn"),
+    shotsBtnCount: document.getElementById("shotsBtnCount"),
+    shotsDrawer: document.getElementById("shotsDrawer"),
+    shotsBody: document.getElementById("shotsBody"),
+    shotsCloseBtn: document.getElementById("shotsCloseBtn"),
     modalOverlay: document.getElementById("modalOverlay"),
     modalContent: document.getElementById("modalContent"),
     toast: document.getElementById("toast"),
@@ -675,6 +832,7 @@
       updateDataNote();
       updateLayoutVisibility();
       renderAll();
+      renderShotsUi();
     })
     .catch((err) => {
       console.error(err);
@@ -1491,7 +1649,12 @@
   els.shareRouteBtn.addEventListener("click", shareRoute);
   els.printRouteBtn.addEventListener("click", printItinerary);
   els.exportRouteBtn.addEventListener("click", exportRouteCsv);
-  els.routeToggleBtn.addEventListener("click", () => els.routeDrawer.classList.toggle("open"));
+  els.routeToggleBtn.addEventListener("click", () => {
+    // Both drawers are bottom-anchored full-width panels — only one open
+    // at a time, or they'd render stacked on top of each other.
+    els.shotsDrawer.classList.remove("open");
+    els.routeDrawer.classList.toggle("open");
+  });
   els.routeCloseBtn.addEventListener("click", () => els.routeDrawer.classList.remove("open"));
   els.clearRouteBtn.addEventListener("click", () => {
     if (!state.route.length) return;
@@ -1599,6 +1762,13 @@
     openModalOverlay();
   }
   els.resourcesBtn.addEventListener("click", () => openResourcesModal("springs"));
+
+  els.shotsBtn.addEventListener("click", () => {
+    els.routeDrawer.classList.remove("open");
+    els.shotsDrawer.classList.toggle("open");
+    renderShotsUi();
+  });
+  els.shotsCloseBtn.addEventListener("click", () => els.shotsDrawer.classList.remove("open"));
 
   function downloadJson(obj, filename) {
     const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
@@ -1745,6 +1915,7 @@
     // (and resetting its map zoom) while the drawer the user is looking at
     // stays open.
     if (els.routeDrawer.classList.contains("open")) { els.routeDrawer.classList.remove("open"); return; }
+    if (els.shotsDrawer.classList.contains("open")) { els.shotsDrawer.classList.remove("open"); return; }
     if (els.sidePanel.classList.contains("open")) { closeSidePanel(); resetZoom(); }
   });
 
