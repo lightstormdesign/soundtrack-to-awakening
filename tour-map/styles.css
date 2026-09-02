@@ -127,10 +127,18 @@ a{color:var(--ls-gold-light);}
 }
 #us-map{width:100%; height:auto; max-width:1100px; max-height:72vh;}
 
+/* Translucent by default so the starfield/sacred-geometry canvas behind
+   the page (z-index 0, states have no opaque layer between them and it)
+   shows through the map's own shape — "asleep" until the map is actually
+   touched. #us-map.awakened (set once, on first real interaction with the
+   map) restores the normal opaque fill via the plain .state-path rule
+   below; :hover/.selected are more specific than either and keep working
+   regardless of awake state. */
 .state-path{
-  fill:#0c0c0c; stroke:rgba(245,243,238,0.55); stroke-width:0.6; cursor:pointer;
-  transition:fill 200ms ease, stroke 200ms ease, opacity 250ms ease;
+  fill:rgba(12,12,12,0.3); stroke:rgba(245,243,238,0.55); stroke-width:0.6; cursor:pointer;
+  transition:fill 900ms ease, stroke 200ms ease, opacity 250ms ease;
 }
+#us-map.awakened .state-path{ fill:#0c0c0c; }
 .state-path:hover, .state-path:focus-visible{fill:#161616; stroke:var(--ls-gold-light);}
 .state-path:focus-visible{outline:2px solid var(--ls-gold); outline-offset:1px;}
 .state-path.dimmed{opacity:0.25;}

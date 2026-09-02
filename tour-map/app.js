@@ -6,13 +6,66 @@
 (() => {
   "use strict";
 
-  /* ---------------- Starfield background ---------------- */
+  /* ---------------- Starfield + sacred-geometry background ----------------
+     A plain twinkling starfield, plus a Flower-of-Life/Sri-Yantra mandala
+     drawn constellation-style (its own points as brighter, gold-tinted
+     "stars" joined by faint lines, not solid circle/triangle line art) so
+     it reads as part of the night sky rather than a technical diagram
+     overlaid on it. Lives on the fixed, full-viewport #starfield canvas
+     (z-index 0, behind everything) — the map's own state shapes are
+     translucent until "awakened" (see wireMapAwakening below), so this
+     shows through them too, and it's always visible in the space beyond
+     the map's edges regardless of zoom. */
   (function starfield() {
     const canvas = document.getElementById("starfield");
     const ctx = canvas.getContext("2d");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let stars = [];
+    let sacred = { nodes: [], edges: [] };
     let w, h;
+
+    // Flower of Life (center + two hex rings, 19 points) and a Sri-Yantra-
+    // style hexagram (two overlapping triangles) sharing the same center —
+    // "harmonized" by sharing center/scale/6-fold symmetry rather than by
+    // literally sharing points, which keeps each pattern recognizable.
+    function buildSacredGeometry(cx, cy, R) {
+      const nodes = [];
+      const edges = [];
+      const add = (x, y, weight) => nodes.push({ x, y, weight }) - 1;
+
+      const center = add(cx, cy, 1);
+      const ring1 = [];
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        ring1.push(add(cx + Math.cos(a) * R, cy + Math.sin(a) * R, 0.75));
+      }
+      const ring2 = [];
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        const r = k % 2 === 0 ? R * 2 : R * Math.sqrt(3);
+        const aOff = k % 2 === 0 ? a : a + Math.PI / 12;
+        ring2.push(add(cx + Math.cos(aOff) * r, cy + Math.sin(aOff) * r, 0.5));
+      }
+      ring1.forEach((n, i) => {
+        edges.push([center, n]);
+        edges.push([n, ring1[(i + 1) % 6]]);
+        edges.push([n, ring2[i * 2]]);
+      });
+      ring2.forEach((n, i) => edges.push([n, ring2[(i + 1) % 12]]));
+
+      const hex = (radius, rotate) => {
+        const pts = [];
+        for (let k = 0; k < 3; k++) {
+          const a = rotate + (k / 3) * Math.PI * 2;
+          pts.push(add(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius, 0.9));
+        }
+        edges.push([pts[0], pts[1]], [pts[1], pts[2]], [pts[2], pts[0]]);
+      };
+      hex(R * 1.7, -Math.PI / 2);
+      hex(R * 1.7, Math.PI / 2);
+
+      return { nodes, edges };
+    }
 
     function resize() {
       w = canvas.width = window.innerWidth;
@@ -25,6 +78,11 @@
         phase: Math.random() * Math.PI * 2,
         speed: 0.4 + Math.random() * 0.8,
       }));
+      sacred = buildSacredGeometry(w / 2, h / 2, Math.min(w, h) * 0.16);
+      sacred.nodes.forEach((n) => {
+        n.phase = Math.random() * Math.PI * 2;
+        n.speed = 0.15 + Math.random() * 0.25;
+      });
     }
     window.addEventListener("resize", resize);
     resize();
@@ -34,6 +92,23 @@
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = "#050505";
       ctx.fillRect(0, 0, w, h);
+
+      ctx.save();
+      // Ken Burns: a slow, never-repeating-looking drift (independent low-
+      // frequency sines on scale/x/y) rather than a fixed pan-and-reset,
+      // so there's no visible loop seam. Frozen at rest for reduced motion.
+      if (reduced) {
+        ctx.translate(w / 2, h / 2);
+        ctx.translate(-w / 2, -h / 2);
+      } else {
+        const scale = 1 + 0.045 * (0.5 + 0.5 * Math.sin(t * 0.00007));
+        const dx = Math.sin(t * 0.000045) * w * 0.02;
+        const dy = Math.cos(t * 0.00006) * h * 0.015;
+        ctx.translate(w / 2 + dx, h / 2 + dy);
+        ctx.scale(scale, scale);
+        ctx.translate(-w / 2, -h / 2);
+      }
+
       for (const s of stars) {
         const tw = reduced ? 0.75 : 0.55 + 0.45 * Math.sin(t * 0.001 * s.speed + s.phase);
         ctx.globalAlpha = tw * 0.85;
@@ -42,12 +117,58 @@
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      ctx.strokeStyle = "rgba(249,229,150,0.16)";
+      ctx.lineWidth = 0.6;
+      ctx.globalAlpha = 1;
+      for (const [i, j] of sacred.edges) {
+        const a = sacred.nodes[i], b = sacred.nodes[j];
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      for (const n of sacred.nodes) {
+        const tw = reduced ? 0.8 : 0.6 + 0.4 * Math.sin(t * 0.001 * n.speed + n.phase);
+        ctx.globalAlpha = tw;
+        ctx.fillStyle = "#f9e596";
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 1.1 + n.weight * 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
       ctx.globalAlpha = 1;
       t += 16;
       if (!reduced) requestAnimationFrame(draw);
     }
     draw();
   })();
+
+  // The map's states start translucent (see #us-map.awakened in styles.css)
+  // so the starfield/sacred-geometry canvas shows through — "asleep" until
+  // actually touched. First hover/click on the map itself, or the more
+  // typical entry points on mobile (search, a niche filter, the national-
+  // agents button) where there's no hover at all, wakes it for good.
+  function wireMapAwakening() {
+    const svg = document.getElementById("us-map");
+    if (!svg) return;
+    let awake = false;
+    const wake = () => {
+      if (awake) return;
+      awake = true;
+      svg.classList.add("awakened");
+    };
+    svg.addEventListener("mouseenter", wake, { once: true });
+    svg.addEventListener("click", wake, { once: true });
+    svg.addEventListener("touchstart", wake, { once: true, passive: true });
+    svg.addEventListener("focusin", wake, { once: true });
+    document.getElementById("searchInput")?.addEventListener("input", wake, { once: true });
+    document.getElementById("nationalBtn")?.addEventListener("click", wake, { once: true });
+    document.getElementById("modeToggle")?.addEventListener("click", wake, { once: true });
+    document.getElementById("nicheChips")?.addEventListener("click", wake, { once: true });
+  }
+  wireMapAwakening();
 
   /* ---------------- State FIPS table ---------------- */
   const STATES = [
