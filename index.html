@@ -269,7 +269,7 @@
 </head>
 <body>
 
-<div class="scene active" id="scene-portal">
+<div class="scene active" id="scene-portal" role="button" tabindex="0" aria-label="Tap to awaken">
   <video id="portalLoop" class="layer-img" autoplay muted loop playsinline preload="auto" poster="assets/fallback.jpg">
     <source src="assets/portal-loop.mp4" type="video/mp4">
   </video>
@@ -471,7 +471,12 @@
     }, 20);
   }
 
-  portal.addEventListener('click', function(e){
+  // #scene-portal is the entire "Tap to Awaken" surface, activated only via
+  // a 'click' listener — real for a mouse/touch tap, but a plain div with
+  // no button/link semantics gets no keyboard path to that 'click' at all.
+  // Named so a 'keydown' listener below can trigger the exact same
+  // handler for Enter/Space, same as a native button would.
+  function activatePortal(e){
     if (entering) return;
     entering = true;
 
@@ -537,6 +542,12 @@
     } else {
       reveal();
     }
+  }
+  portal.addEventListener('click', activatePortal);
+  portal.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    e.preventDefault();
+    activatePortal(e);
   });
 
   if (transitionVideo) {
