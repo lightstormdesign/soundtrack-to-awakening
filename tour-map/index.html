@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tour Route Planner — Booking Directory Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="description" content="Interactive US map of booking agents and festivals — plan your tour route and draft outreach in one place.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="starfield"></canvas>
+
+  <div class="app">
+    <header class="topbar">
+      <p class="eyebrow">Soundtrack to Awakening</p>
+      <h1>Tour Route Planner</h1>
+      <p class="sub">Every booking agent and festival in the directory, on one map. Hover a state for the numbers, click in for contacts, and build your route as you go.</p>
+
+      <div class="controls">
+        <div class="mode-toggle mode-toggle-3" id="modeToggle">
+          <span class="pill" id="modePill"></span>
+          <button type="button" data-mode="agents" class="active">Agents</button>
+          <button type="button" data-mode="festivals">Festivals</button>
+          <button type="button" data-mode="radio">Radio</button>
+        </div>
+
+        <div class="search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="searchInput" type="text" placeholder="Search by name, city, or genre…">
+        </div>
+
+        <button class="icon-btn" id="nationalBtn" type="button">National Agents <span class="count-badge" id="nationalCount">0</span></button>
+        <button class="icon-btn" id="festivalViewToggle" type="button" style="display:none;">Show approx. map <span class="count-badge" id="festivalApproxCount">0</span></button>
+        <button class="icon-btn gold" id="profileBtn" type="button">My Profile</button>
+      </div>
+
+      <div class="chips" id="nicheChips"></div>
+      <p class="data-note" id="dataNote"></p>
+      <button type="button" id="resourcesBtn" class="resources-link">🌿 tour resources — springs &amp; high-vibe food</button>
+    </header>
+
+    <div class="main-area">
+      <div class="map-stage">
+        <svg id="us-map" viewBox="0 0 975 610" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Interactive map of the United States. Tab through states or use search to find booking agents and festivals; press Enter on a state to see its contacts."></svg>
+      </div>
+
+      <!-- Festival mode uses this scroll list instead of pins -->
+      <div class="festival-scroll" id="festivalScroll" style="display:none;">
+        <p class="results-count" id="festivalCount"></p>
+        <div class="festival-grid" id="festivalGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <!-- State / list detail panel -->
+  <aside class="side-panel" id="sidePanel" role="dialog" aria-modal="true" aria-labelledby="spTitle">
+    <div class="sp-head">
+      <div>
+        <h2 id="spTitle">—</h2>
+        <p class="sp-count" id="spCount"></p>
+      </div>
+      <button class="sp-close" id="spClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="sp-body" id="spBody"></div>
+  </aside>
+
+  <!-- Route planner -->
+  <button class="route-toggle-btn" id="routeToggleBtn" type="button">Route (<span id="routeBtnCount">0</span>)</button>
+  <div class="route-drawer" id="routeDrawer" role="dialog" aria-modal="false" aria-label="Your tour route">
+    <div class="rd-head">
+      <h2>Your Tour Route</h2>
+      <div class="rd-head-actions">
+        <button class="icon-btn" id="shareRouteBtn" type="button">Share link</button>
+        <button class="icon-btn" id="printRouteBtn" type="button">Print itinerary</button>
+        <button class="icon-btn" id="exportRouteBtn" type="button">Export CSV</button>
+        <button class="icon-btn" id="clearRouteBtn" type="button">Clear all</button>
+        <button class="sp-close" id="routeCloseBtn" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="rd-body" id="rdBody"></div>
+  </div>
+
+  <!-- Today's Shots: daily outreach practice -->
+  <button class="shots-toggle-btn" id="shotsBtn" type="button">Today's Shots (<span id="shotsBtnCount">0/3</span>)</button>
+  <div class="route-drawer shots-drawer" id="shotsDrawer" role="dialog" aria-modal="false" aria-label="Today's shots">
+    <div class="rd-head">
+      <h2>Today's Shots</h2>
+      <div class="rd-head-actions">
+        <button class="sp-close" id="shotsCloseBtn" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="rd-body" id="shotsBody"></div>
+  </div>
+
+  <!-- Contact / email modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="modalContent" role="dialog" aria-modal="true" tabindex="-1"></div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/d3.min.js"></script>
+  <script src="vendor/topojson-client.min.js"></script>
+  <script src="data/template-data.js"></script>
+  <script src="data/area-codes.js"></script>
+  <script src="data/state-centers.js"></script>
+  <script src="data/festival-overrides.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
