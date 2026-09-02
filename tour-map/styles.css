@@ -73,6 +73,10 @@ a{color:var(--ls-gold-light);}
   position:absolute; inset:4px; width:calc(50% - 4px); border-radius:999px; background:var(--ls-gold);
   transition:transform 300ms ease; z-index:0;
 }
+/* Agents / Festivals / Radio — same pill-slide mechanic as the 2-way
+   toggle, just thirds instead of halves. JS sets translateX to 0/100%/200%. */
+.mode-toggle-3{ width:300px; }
+.mode-toggle-3 .pill{ width:calc(33.333% - 4px); }
 .mode-toggle button{
   position:relative; z-index:1; flex:1; background:none; border:none; padding:8px 0; cursor:pointer;
   font-family:'Outfit'; font-size:0.68rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--ls-text-soft);

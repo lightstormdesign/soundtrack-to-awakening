@@ -188,6 +188,10 @@
   ];
   const NAME_TO_FIPS = new Map(STATES.map(([name, , fips]) => [name.toLowerCase(), fips]));
   const FIPS_TO_META = new Map(STATES.map(([name, abbr, fips]) => [fips, { name, abbr }]));
+  // Radio stations carry a 2-letter abbreviation ("WA") rather than a full
+  // state name ("Washington") — a separate lookup rather than overloading
+  // NAME_TO_FIPS with both key shapes.
+  const ABBR_TO_FIPS = new Map(STATES.map(([, abbr, fips]) => [abbr.toLowerCase(), fips]));
 
   /* ---------------- Niche / genre filters ---------------- */
   const NICHES = [
@@ -473,6 +477,47 @@
     };
   }
 
+  function normalizeRadio(r, i) {
+    const genresText = Array.isArray(r.genres) && r.genres.length ? r.genres.join(", ") : null;
+    const website = cleanWebsiteField(r.website);
+    const stateFips = ABBR_TO_FIPS.get((r.state || "").toLowerCase()) ?? null;
+    const subtitle = [r.format, [r.city, r.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+    return {
+      id: r.id || `radio-${i}`, type: "radio", name: r.name, subtitle: subtitle || null,
+      genresText, email: null, website, phone: null, links: [], contactForm: null,
+      isNational: false, stateFips, stateName: FIPS_TO_META.get(stateFips)?.name ?? null,
+      submissionNote: cleanStr(r.submission_note),
+      dupCount: 0,
+      searchIndex: [r.name, genresText, r.city, r.format].filter(Boolean).join(" ").toLowerCase(),
+    };
+  }
+
+  // Springs/restaurants ("Tour Resources") reuse the exact same card/
+  // contact-modal/route machinery as agents/festivals/radio — so "add this
+  // hot spring to my route" works for free — rather than a bespoke,
+  // narrower card type. focus/access (e.g. "farm_to_table", "hot_spring",
+  // "Free, short hike") ride in the subtitle since there's no separate
+  // genre concept here; category prefixes it so both kinds read cleanly.
+  const RESOURCE_CATEGORY_LABEL = {
+    farm_to_table: "Farm-to-table", organic: "Organic", no_seed_oil: "No seed oil",
+    hot_spring: "Hot spring", mineral_spring: "Mineral spring",
+  };
+  function normalizeResource(r, kind) {
+    const category = RESOURCE_CATEGORY_LABEL[r.focus || r.type] || null;
+    const subtitle = [category, [r.city, r.state].filter(Boolean).join(", "), r.access]
+      .filter(Boolean).join(" · ");
+    const stateFips = r.state ? NAME_TO_FIPS.get(r.state.toLowerCase()) ?? null : null;
+    return {
+      id: r.id, type: kind, name: r.name, subtitle: subtitle || null,
+      genresText: null, email: null, website: cleanWebsiteField(r.website), phone: null,
+      links: [], contactForm: null, nameUncertain: false,
+      isNational: false, stateFips, stateName: r.state || null,
+      submissionNote: cleanStr(r.notes),
+      dupCount: 0,
+      searchIndex: [r.name, r.city, r.state, category].filter(Boolean).join(" ").toLowerCase(),
+    };
+  }
+
   function matchesNiche(item, nicheKey) {
     if (nicheKey === "all" || !item.genresText) return nicheKey === "all";
     const niche = NICHES.find((n) => n.key === nicheKey);
@@ -493,6 +538,9 @@
     sharedRoute: null,
     agents: [],
     festivals: [],
+    radio: [],
+    springs: [],
+    restaurants: [],
     route: loadRoute(),
     profile: loadProfile(),
     contacted: loadContacted(),
@@ -590,6 +638,7 @@
     spBody: document.getElementById("spBody"),
     spClose: document.getElementById("spClose"),
     profileBtn: document.getElementById("profileBtn"),
+    resourcesBtn: document.getElementById("resourcesBtn"),
     festivalViewToggle: document.getElementById("festivalViewToggle"),
     festivalApproxCount: document.getElementById("festivalApproxCount"),
     routeToggleBtn: document.getElementById("routeToggleBtn"),
@@ -610,10 +659,16 @@
     fetch("data/agents.json").then((r) => r.json()),
     fetch("data/festivals.json").then((r) => r.json()),
     fetch("data/us-states-10m.json").then((r) => r.json()),
+    fetch("data/radio_stations.json").then((r) => r.json()),
+    fetch("data/springs.json").then((r) => r.json()),
+    fetch("data/restaurants.json").then((r) => r.json()),
   ])
-    .then(([agentsRaw, festivalsRaw, topo]) => {
+    .then(([agentsRaw, festivalsRaw, topo, radioRaw, springsRaw, restaurantsRaw]) => {
       state.agents = Array.isArray(agentsRaw) ? dedupeRaw(agentsRaw, "state", ["scope"]).map(normalizeAgent) : [];
       state.festivals = Array.isArray(festivalsRaw) ? dedupeRaw(festivalsRaw).map(normalizeFestival) : [];
+      state.radio = Array.isArray(radioRaw) ? radioRaw.map(normalizeRadio) : [];
+      state.springs = Array.isArray(springsRaw) ? springsRaw.map((r) => normalizeResource(r, "spring")) : [];
+      state.restaurants = Array.isArray(restaurantsRaw) ? restaurantsRaw.map((r) => normalizeResource(r, "restaurant")) : [];
       state.topology = topo;
       initMap(topo);
       renderNicheChips();
@@ -687,9 +742,15 @@
   function showTooltip(e, d) {
     const fips = +d.id;
     const meta = FIPS_TO_META.get(fips);
-    const items = currentFilteredAgents().filter((a) => a.stateFips === fips);
-    els.tooltip.innerHTML =
-      `<div class="t-title">${meta.name}</div><div class="t-sub">${items.length} booking agent${items.length === 1 ? "" : "s"}</div>`;
+    let label;
+    if (state.mode === "radio") {
+      const items = currentFilteredRadio().filter((r) => r.stateFips === fips);
+      label = `${items.length} radio station${items.length === 1 ? "" : "s"}`;
+    } else {
+      const items = currentFilteredAgents().filter((a) => a.stateFips === fips);
+      label = `${items.length} booking agent${items.length === 1 ? "" : "s"}`;
+    }
+    els.tooltip.innerHTML = `<div class="t-title">${meta.name}</div><div class="t-sub">${label}</div>`;
     els.tooltip.classList.add("show");
     moveTooltip(e);
   }
@@ -714,6 +775,10 @@
       state.selectedFips = fips;
       zoomToState(fips);
       openFestivalApproxPanel(fips);
+    } else if (state.mode === "radio") {
+      state.selectedFips = fips;
+      zoomToState(fips);
+      openRadioStatePanel(fips);
     }
   }
 
@@ -754,6 +819,10 @@
     const q = state.query.trim().toLowerCase();
     return state.festivals.filter((f) => (!q || f.searchIndex.includes(q)) && (state.month === "all" || f.month === state.month));
   }
+  function currentFilteredRadio() {
+    const q = state.query.trim().toLowerCase();
+    return state.radio.filter((r) => (!q || r.searchIndex.includes(q)) && matchesNicheOrAll(r));
+  }
 
   /* ---------------- Rendering ---------------- */
   function renderAll() {
@@ -764,6 +833,7 @@
     if (state.sidePanelKind === "agentState") openStatePanel(state.sidePanelFips);
     else if (state.sidePanelKind === "festivalApprox") openFestivalApproxPanel(state.sidePanelFips);
     else if (state.sidePanelKind === "national") openNationalPanel();
+    else if (state.sidePanelKind === "radioState") openRadioStatePanel(state.sidePanelFips);
   }
 
   function groupByFips(items, fipsKey) {
@@ -779,6 +849,7 @@
 
   function renderMapMarkers() {
     const isAgentsMode = state.mode === "agents";
+    const isRadioMode = state.mode === "radio";
     const showApproxFestivals = state.mode === "festivals" && state.festivalMapView;
 
     statesLayer.selectAll("path.state-path")
@@ -787,14 +858,18 @@
     labelsLayer.selectAll("text.state-label")
       .classed("dimmed", () => state.mode === "festivals" && !state.festivalMapView);
 
-    // Confirmed-location layer: agent counts in Agents mode, or manually
-    // verified festivals (real stateFips, from festival-overrides.js) in
-    // Festivals map view — markersLayer is otherwise unused in that mode.
+    // Confirmed-location layer: agent counts in Agents mode, radio-station
+    // counts in Radio mode (both have a real stateFips on every record), or
+    // manually verified festivals (real stateFips, from festival-
+    // overrides.js) in Festivals map view — markersLayer is otherwise
+    // unused in that mode.
     const confirmedByFips = isAgentsMode
       ? groupByFips(currentFilteredAgents().filter((a) => !a.isNational), "stateFips")
-      : showApproxFestivals
-        ? groupByFips(currentFilteredFestivals().filter((f) => f.stateFips != null), "stateFips")
-        : new Map();
+      : isRadioMode
+        ? groupByFips(currentFilteredRadio(), "stateFips")
+        : showApproxFestivals
+          ? groupByFips(currentFilteredFestivals().filter((f) => f.stateFips != null), "stateFips")
+          : new Map();
     const confirmedMax = Math.max(1, ...Array.from(confirmedByFips.values()).map((v) => v.length));
     const confirmedR = d3.scaleSqrt().domain([0, confirmedMax]).range([0, 15]);
     const confirmedData = Array.from(confirmedByFips.entries()).map(([fips, items]) => ({ fips, items }));
@@ -813,7 +888,11 @@
       )
       .on("mouseenter", (e, d) => {
         const meta = FIPS_TO_META.get(d.fips);
-        const label = isAgentsMode ? `${d.items.length} matching agent${d.items.length === 1 ? "" : "s"}` : `${d.items.length} verified festival${d.items.length === 1 ? "" : "s"}`;
+        const label = isAgentsMode
+          ? `${d.items.length} matching agent${d.items.length === 1 ? "" : "s"}`
+          : isRadioMode
+            ? `${d.items.length} radio station${d.items.length === 1 ? "" : "s"}`
+            : `${d.items.length} verified festival${d.items.length === 1 ? "" : "s"}`;
         els.tooltip.innerHTML = `<div class="t-title">${meta.name}</div><div class="t-sub">${label}</div>`;
         els.tooltip.classList.add("show");
         moveTooltip(e);
@@ -907,6 +986,10 @@
       els.dataNote.textContent = "Pulled from the lightstorm.co directory — verify a contact before a mass send, some entries may be outdated.";
       return;
     }
+    if (state.mode === "radio") {
+      els.dataNote.textContent = "A starter list of independent, college, and public/community stations that take outside music submissions — check each station's own site for current submission instructions.";
+      return;
+    }
     const verifiedCount = state.festivals.filter((f) => f.stateFips != null).length;
     const approxCount = state.festivals.filter((f) => f.stateFips == null && f.approxStateFips != null).length;
     const located = verifiedCount + approxCount;
@@ -917,7 +1000,7 @@
 
   /* ---------------- Mode / search wiring ---------------- */
   function updateLayoutVisibility() {
-    const showMap = state.mode === "agents" || (state.mode === "festivals" && state.festivalMapView);
+    const showMap = state.mode === "agents" || state.mode === "radio" || (state.mode === "festivals" && state.festivalMapView);
     els.mapStage.style.display = showMap ? "flex" : "none";
     els.festivalScroll.style.display = state.mode === "festivals" && !state.festivalMapView ? "block" : "none";
     els.nationalBtn.style.display = state.mode === "agents" ? "inline-block" : "none";
@@ -934,7 +1017,8 @@
       state.mode = btn.dataset.mode;
       state.festivalMapView = false;
       els.modeToggle.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
-      els.modePill.style.transform = state.mode === "agents" ? "translateX(0)" : "translateX(100%)";
+      const pillStep = { agents: 0, festivals: 1, radio: 2 }[state.mode] ?? 0;
+      els.modePill.style.transform = `translateX(${pillStep * 100}%)`;
       updateLayoutVisibility();
       closeSidePanel();
       resetZoom();
@@ -974,6 +1058,18 @@
     els.spTitle.textContent = meta.name;
     els.spCount.textContent = `${items.length} booking agent${items.length === 1 ? "" : "s"}`;
     els.spBody.innerHTML = items.length ? items.map(cardHtml).join("") : `<p class="empty-msg">No agents match the current filters in ${meta.name}.</p>`;
+    wireCardActions(els.spBody, items);
+    els.sidePanel.classList.add("open");
+  }
+
+  function openRadioStatePanel(fips) {
+    state.sidePanelKind = "radioState";
+    state.sidePanelFips = fips;
+    const meta = FIPS_TO_META.get(fips);
+    const items = currentFilteredRadio().filter((r) => r.stateFips === fips);
+    els.spTitle.textContent = meta.name;
+    els.spCount.textContent = `${items.length} radio station${items.length === 1 ? "" : "s"}`;
+    els.spBody.innerHTML = items.length ? items.map(cardHtml).join("") : `<p class="empty-msg">No radio stations match the current filters in ${meta.name}.</p>`;
     wireCardActions(els.spBody, items);
     els.sidePanel.classList.add("open");
   }
@@ -1050,6 +1146,8 @@
       ? `<p class="sub" style="color:var(--ls-text-muted);font-size:10px;">merged ${item.dupCount} duplicate listing${item.dupCount === 1 ? "" : "s"}</p>` : "";
     const nameUncertainNote = item.nameUncertain
       ? `<p class="sub" style="color:var(--ls-text-muted);font-size:10px;">name may be garbled in source data</p>` : "";
+    const submissionNote = item.submissionNote
+      ? `<p class="sub" style="color:var(--ls-text-soft);">${escapeHtml(item.submissionNote)}</p>` : "";
     const status = getContactStatus(item.id);
     return `
       <div class="card" data-id="${item.id}">
@@ -1062,6 +1160,7 @@
         ${confirmedNote}
         ${approxNote}
         ${item.genresText ? `<p class="genres">${escapeHtml(item.genresText)}</p>` : ""}
+        ${submissionNote}
         ${dupNote}
         <div class="row-actions">
           <button type="button" data-action="contact">Contact &amp; email</button>
@@ -1360,7 +1459,7 @@
       <tr>
         <td>${i + 1}</td>
         <td>${escapeHtml(r.name)}</td>
-        <td>${escapeHtml(r.type === "festival" ? "Festival" : "Agent")}</td>
+        <td>${escapeHtml({ festival: "Festival", radio: "Radio station", spring: "Spring", restaurant: "Restaurant" }[r.type] || "Agent")}</td>
         <td>${escapeHtml(r.stateName || r.approxStateName || "—")}</td>
         <td>${escapeHtml(r.date || "—")}</td>
         <td>${escapeHtml(r.email || "—")}</td>
@@ -1471,6 +1570,36 @@
   }
   els.profileBtn.addEventListener("click", openProfileModal);
 
+  // "Tour Resources" (hot springs, high-vibe/farm-to-table restaurants) —
+  // a lighter-weight browsable list rather than a full map mode, since
+  // there are only ~20-40 of each vs. thousands of agents/festivals. Cards
+  // reuse cardHtml()/wireCardActions() exactly like every other item type,
+  // so "Add to route" works here for free.
+  function openResourcesModal(tab) {
+    tab = tab === "restaurants" ? "restaurants" : "springs";
+    const items = tab === "springs" ? state.springs : state.restaurants;
+    els.modalContent.innerHTML = `
+      <button class="modal-close" id="modalCloseBtn" aria-label="Close">&times;</button>
+      <h2>Tour Resources</h2>
+      <p class="m-sub">Hot springs and high-vibe restaurants — add any of these to your route just like an agent or festival.</p>
+      <div class="mode-toggle" id="resourcesModeToggle" style="margin:0 0 14px;">
+        <span class="pill" style="transform:translateX(${tab === "springs" ? "0" : "100%"})"></span>
+        <button type="button" data-tab="springs" class="${tab === "springs" ? "active" : ""}">Springs</button>
+        <button type="button" data-tab="restaurants" class="${tab === "restaurants" ? "active" : ""}">Restaurants</button>
+      </div>
+      <div class="m-section" id="resourcesBody">
+        ${items.length ? items.map(cardHtml).join("") : `<p class="empty-msg">None found.</p>`}
+      </div>
+    `;
+    els.modalContent.querySelector("#modalCloseBtn").addEventListener("click", closeModal);
+    els.modalContent.querySelectorAll("[data-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => openResourcesModal(btn.dataset.tab));
+    });
+    wireCardActions(els.modalContent.querySelector("#resourcesBody"), items);
+    openModalOverlay();
+  }
+  els.resourcesBtn.addEventListener("click", () => openResourcesModal("springs"));
+
   function downloadJson(obj, filename) {
     const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1533,10 +1662,11 @@
           ${item.contactForm ? `<a href="${escapeHtml(websiteHref(item.contactForm))}" target="_blank" rel="noopener noreferrer">Contact form</a>` : ""}
           ${item.links.map((l) => `<a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a>`).join("")}
         </div>
+        ${item.submissionNote ? `<p class="m-sub" style="margin-top:8px;">${escapeHtml(item.submissionNote)}</p>` : ""}
       </div>
 
       <div class="m-section">
-        <h4>Email this ${item.type === "festival" ? "festival" : "agent"}</h4>
+        <h4>Email this ${{ festival: "festival", radio: "station", spring: "spring", restaurant: "restaurant" }[item.type] || "agent"}</h4>
         <div class="m-actions">
           ${gmailUrl ? `<button type="button" data-action="gmail" class="icon-btn gold">Open in Gmail</button>` : ""}
           ${mailtoUrl ? `<a href="${mailtoUrl}" class="icon-btn">Open in mail app</a>` : `<span style="font-size:0.75rem;color:var(--ls-text-muted)">No email on file — use the website or socials above.</span>`}
