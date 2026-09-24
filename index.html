@@ -251,6 +251,39 @@
     font-weight:500;
     letter-spacing:0.02em;
   }
+  /* Share row is a <button>, not a link -- reset the native button chrome
+     so it matches the platform rows exactly. */
+  button.platform-row{
+    width:100%;
+    font:inherit;
+    text-align:left;
+    cursor:pointer;
+    -webkit-appearance:none;
+    appearance:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .share-toast{
+    position:fixed;
+    left:50%;
+    bottom:calc(28px + env(safe-area-inset-bottom, 0px));
+    transform:translate(-50%, 12px);
+    z-index:150;
+    width:max-content;
+    max-width:calc(100% - 32px);
+    padding:11px 18px;
+    border-radius:14px;
+    border:1px solid rgba(232,185,106,0.4);
+    background:rgba(10,14,8,0.92);
+    color:#f1ead9;
+    font-family:'Jost', sans-serif;
+    font-size:13px;
+    line-height:1.45;
+    text-align:center;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 260ms ease, transform 260ms ease;
+  }
+  .share-toast.show{ opacity:1; transform:translate(-50%, 0); }
   @media (prefers-reduced-motion: reduce){
     .tap-hint{ animation:none !important; }
   }
@@ -414,10 +447,15 @@
       <span class="picon"><svg viewBox="0 0 24 24" fill="none"><rect x="2.75" y="6" width="18.5" height="12" rx="4" stroke="currentColor" stroke-width="1.4"/><path d="M10.3 9.6v4.8l4.4-2.4-4.4-2.4Z" fill="currentColor"/></svg></span>
       <span class="pname">YouTube</span>
     </a>
+    <button type="button" class="platform-row" id="shareInstagram" data-platform="instagram">
+      <span class="picon"><svg viewBox="0 0 24 24" fill="none"><rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg></span>
+      <span class="pname">Share to Instagram</span>
+    </button>
   </div>
 </div>
 
 <div class="blackout" id="blackout"></div>
+<div class="share-toast" id="shareToast" role="status" aria-live="polite"></div>
 
 <div id="returnPopup" role="dialog" aria-modal="true" aria-labelledby="popupHeadline">
   <div class="popup-card">
@@ -699,7 +737,7 @@
   var popupClose = document.getElementById('popupClose');
   var platformClicked = false;
 
-  var platformRows = document.querySelectorAll('.platform-row');
+  var platformRows = document.querySelectorAll('a.platform-row');
   for (var i = 0; i < platformRows.length; i++) {
     platformRows[i].addEventListener('click', function(){
       platformClicked = true;
@@ -750,6 +788,80 @@
 
     returnPopup.classList.add('submitted');
     setTimeout(closePopup, 2600);
+  });
+
+  // ---- share to Instagram ----
+  // Instagram has no web share URL (no equivalent of Facebook's sharer.php),
+  // so the only no-approval route is the Web Share API: on phones it opens
+  // the OS share sheet with the image attached, and Instagram (Stories,
+  // Feed, DMs) appears there as a target. The image is fetched up front
+  // because Safari only allows navigator.share() inside the tap itself --
+  // awaiting a fetch first would burn the user activation and the share
+  // would be rejected. Desktop browsers can't hand files to Instagram at
+  // all, so there we save the image and copy the link instead.
+  var SHARE_IMAGE_SRC = 'assets/fallback.jpg';
+  var SHARE_FILENAME = 'soundtrack-to-awakening.jpg';
+  var shareButton = document.getElementById('shareInstagram');
+  var shareToast = document.getElementById('shareToast');
+  var shareFile = null;
+  var toastTimer = null;
+
+  function shareUrl(){
+    return location.href.split('#')[0];
+  }
+
+  function showToast(msg){
+    shareToast.textContent = msg;
+    shareToast.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){
+      shareToast.classList.remove('show');
+    }, 4200);
+  }
+
+  if (window.fetch && typeof File === 'function') {
+    fetch(SHARE_IMAGE_SRC)
+      .then(function(res){ return res.ok ? res.blob() : null; })
+      .then(function(blob){
+        if (blob) shareFile = new File([blob], SHARE_FILENAME, { type: 'image/jpeg' });
+      })
+      .catch(function(){});
+  }
+
+  function copyLink(){
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(shareUrl()).then(
+        function(){ return true; },
+        function(){ return false; }
+      );
+    }
+    return Promise.resolve(false);
+  }
+
+  function saveImageFallback(){
+    var a = document.createElement('a');
+    a.href = SHARE_IMAGE_SRC;
+    a.download = SHARE_FILENAME;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    copyLink().then(function(copied){
+      showToast(copied
+        ? 'Image saved & link copied \u2014 post it from Instagram on your phone.'
+        : 'Image saved \u2014 post it from Instagram on your phone.');
+    });
+  }
+
+  shareButton.addEventListener('click', function(){
+    var data = shareFile ? { files: [shareFile], title: 'Soundtrack to Awakening' } : null;
+    if (data && navigator.canShare && navigator.canShare(data)) {
+      navigator.share(data).catch(function(err){
+        // AbortError = the visitor closed the share sheet; nothing to do.
+        if (err && err.name !== 'AbortError') saveImageFallback();
+      });
+    } else {
+      saveImageFallback();
+    }
   });
 
   sizeCanvas();
