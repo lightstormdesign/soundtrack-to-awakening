@@ -198,6 +198,39 @@
     transition:opacity 500ms ease;
   }
   #scene-portal.bursting .tap-hint{ opacity:0; animation:none; }
+  /* Landing share button. Sits above the burst canvas but below the
+     blackout, and fades out with the tap hint once the transition starts. */
+  .landing-share{
+    position:absolute;
+    left:50%;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 28px);
+    transform:translateX(-50%);
+    z-index:7;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:10px 18px;
+    white-space:nowrap;
+    border-radius:999px;
+    border:1px solid rgba(232,185,106,0.4);
+    background:rgba(0,0,0,0.45);
+    backdrop-filter:blur(6px);
+    color:#f0c878;
+    font-family:'Jost', sans-serif;
+    font-size:13px;
+    font-weight:500;
+    letter-spacing:0.02em;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:opacity 500ms ease, border-color 200ms ease, background 200ms ease;
+  }
+  .landing-share:hover, .landing-share:focus-visible{
+    border-color:rgba(232,185,106,0.7);
+    background:rgba(0,0,0,0.6);
+    outline:none;
+  }
+  .landing-share svg{ width:16px; height:16px; flex:none; }
+  #scene-portal.bursting .landing-share{ opacity:0; pointer-events:none; }
   @keyframes hintPulse{
     0%,100%{ opacity:0.6; }
     50%{ opacity:1; }
@@ -251,6 +284,28 @@
     font-weight:500;
     letter-spacing:0.02em;
   }
+  .share-toast{
+    position:fixed;
+    left:50%;
+    bottom:calc(28px + env(safe-area-inset-bottom, 0px));
+    transform:translate(-50%, 12px);
+    z-index:250;
+    width:max-content;
+    max-width:calc(100% - 32px);
+    padding:11px 18px;
+    border-radius:14px;
+    border:1px solid rgba(232,185,106,0.4);
+    background:rgba(10,14,8,0.92);
+    color:#f1ead9;
+    font-family:'Jost', sans-serif;
+    font-size:13px;
+    line-height:1.45;
+    text-align:center;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 260ms ease, transform 260ms ease;
+  }
+  .share-toast.show{ opacity:1; transform:translate(-50%, 0); }
   @media (prefers-reduced-motion: reduce){
     .tap-hint{ animation:none !important; }
   }
@@ -385,6 +440,32 @@
   #returnPopup.submitted .popup-form,
   #returnPopup.submitted .popup-headline{ display:none; }
   #returnPopup.submitted .popup-thanks{ display:block; }
+  .popup-share{
+    width:100%;
+    margin-top:18px;
+    padding:13px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    border-radius:999px;
+    border:1px solid rgba(232,185,106,0.4);
+    background:transparent;
+    color:#f0c878;
+    font-family:'Jost', sans-serif;
+    font-size:13.5px;
+    font-weight:500;
+    letter-spacing:0.02em;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:border-color 200ms ease, background 200ms ease;
+  }
+  .popup-share:hover, .popup-share:focus-visible{
+    border-color:rgba(232,185,106,0.7);
+    background:rgba(232,185,106,0.08);
+    outline:none;
+  }
+  .popup-share svg{ width:17px; height:17px; flex:none; }
 </style>
 </head>
 <body>
@@ -402,6 +483,10 @@
   <div class="portal-scrim"></div>
   <canvas id="burstCanvas"></canvas>
   <div class="tap-hint">Tap to Awaken</div>
+  <button type="button" class="landing-share js-share-ig">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>
+    Share to Instagram
+  </button>
 </div>
 
 <div class="scene" id="scene-links">
@@ -418,6 +503,7 @@
 </div>
 
 <div class="blackout" id="blackout"></div>
+<div class="share-toast" id="shareToast" role="status" aria-live="polite"></div>
 
 <div id="returnPopup" role="dialog" aria-modal="true" aria-labelledby="popupHeadline">
   <div class="popup-card">
@@ -430,6 +516,10 @@
       <p class="popup-micro">(Direct transmission. No spam. Text STOP anytime.)</p>
     </form>
     <p class="popup-thanks">You're in. Watch your messages &mdash; the next transmission is coming.</p>
+    <button type="button" class="popup-share js-share-ig">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>
+      Share the Portal on Instagram
+    </button>
   </div>
 </div>
 
@@ -748,9 +838,105 @@
       body: JSON.stringify({ phone: phone })
     }).catch(function(){});
 
+    // Stays open (no auto-close) so the share button below the thanks
+    // message is still there to tap.
     returnPopup.classList.add('submitted');
-    setTimeout(closePopup, 2600);
   });
+
+  // ---- share to Instagram ----
+  // Offered twice: at the bottom of the landing screen, and again in the
+  // return popup once the visitor has actually listened. Instagram has no web share URL
+  // (no equivalent of Facebook's sharer.php), so the only no-approval
+  // route is the Web Share API: on phones it opens the OS share sheet with
+  // a file attached, and Instagram (Stories/Reels/Feed/DMs) is a target.
+  // We share the portal loop itself (vertical 9:16, silent, so it drops
+  // straight into a Story and people can add their own music), falling
+  // back to the still where video file sharing isn't supported. Files are
+  // fetched up front because Safari only allows navigator.share() inside
+  // the tap itself -- awaiting a fetch first would burn the user
+  // activation and the share would be rejected. Desktop browsers can't
+  // hand files to Instagram at all, so there we save the video and copy
+  // the link instead.
+  var SHARE_VIDEO = { src: 'assets/portal-loop.mp4', name: 'soundtrack-to-awakening.mp4', type: 'video/mp4' };
+  var SHARE_IMAGE = { src: 'assets/fallback.jpg', name: 'soundtrack-to-awakening.jpg', type: 'image/jpeg' };
+  var shareButtons = document.querySelectorAll('.js-share-ig');
+  var shareToast = document.getElementById('shareToast');
+  var shareFiles = {};
+  var toastTimer = null;
+
+  function shareUrl(){
+    return location.href.split('#')[0];
+  }
+
+  function showToast(msg){
+    shareToast.textContent = msg;
+    shareToast.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){
+      shareToast.classList.remove('show');
+    }, 4200);
+  }
+
+  function prefetchShareFile(asset){
+    if (!window.fetch || typeof File !== 'function') return;
+    fetch(asset.src)
+      .then(function(res){ return res.ok ? res.blob() : null; })
+      .then(function(blob){
+        if (blob) shareFiles[asset.src] = new File([blob], asset.name, { type: asset.type });
+      })
+      .catch(function(){});
+  }
+  prefetchShareFile(SHARE_VIDEO);
+  prefetchShareFile(SHARE_IMAGE);
+
+  function shareableData(asset){
+    var file = shareFiles[asset.src];
+    if (!file || !navigator.canShare) return null;
+    var data = { files: [file], title: 'Soundtrack to Awakening' };
+    return navigator.canShare(data) ? data : null;
+  }
+
+  function copyLink(){
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(shareUrl()).then(
+        function(){ return true; },
+        function(){ return false; }
+      );
+    }
+    return Promise.resolve(false);
+  }
+
+  function saveFileFallback(){
+    var a = document.createElement('a');
+    a.href = SHARE_VIDEO.src;
+    a.download = SHARE_VIDEO.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    copyLink().then(function(copied){
+      showToast(copied
+        ? 'Video saved & link copied \u2014 post it from Instagram on your phone.'
+        : 'Video saved \u2014 post it from Instagram on your phone.');
+    });
+  }
+
+  function onShareClick(e){
+    // The landing button sits inside the portal scene, whose own click
+    // handler starts the transition -- keep the share tap from reaching it.
+    e.stopPropagation();
+    var data = shareableData(SHARE_VIDEO) || shareableData(SHARE_IMAGE);
+    if (data) {
+      navigator.share(data).catch(function(err){
+        // AbortError = the visitor closed the share sheet; nothing to do.
+        if (err && err.name !== 'AbortError') saveFileFallback();
+      });
+    } else {
+      saveFileFallback();
+    }
+  }
+  for (var j = 0; j < shareButtons.length; j++) {
+    shareButtons[j].addEventListener('click', onShareClick);
+  }
 
   sizeCanvas();
 })();
