@@ -251,23 +251,12 @@
     font-weight:500;
     letter-spacing:0.02em;
   }
-  /* Share row is a <button>, not a link -- reset the native button chrome
-     so it matches the platform rows exactly. */
-  button.platform-row{
-    width:100%;
-    font:inherit;
-    text-align:left;
-    cursor:pointer;
-    -webkit-appearance:none;
-    appearance:none;
-    -webkit-tap-highlight-color:transparent;
-  }
   .share-toast{
     position:fixed;
     left:50%;
     bottom:calc(28px + env(safe-area-inset-bottom, 0px));
     transform:translate(-50%, 12px);
-    z-index:150;
+    z-index:250;
     width:max-content;
     max-width:calc(100% - 32px);
     padding:11px 18px;
@@ -418,6 +407,32 @@
   #returnPopup.submitted .popup-form,
   #returnPopup.submitted .popup-headline{ display:none; }
   #returnPopup.submitted .popup-thanks{ display:block; }
+  .popup-share{
+    width:100%;
+    margin-top:18px;
+    padding:13px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    border-radius:999px;
+    border:1px solid rgba(232,185,106,0.4);
+    background:transparent;
+    color:#f0c878;
+    font-family:'Jost', sans-serif;
+    font-size:13.5px;
+    font-weight:500;
+    letter-spacing:0.02em;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:border-color 200ms ease, background 200ms ease;
+  }
+  .popup-share:hover, .popup-share:focus-visible{
+    border-color:rgba(232,185,106,0.7);
+    background:rgba(232,185,106,0.08);
+    outline:none;
+  }
+  .popup-share svg{ width:17px; height:17px; flex:none; }
 </style>
 </head>
 <body>
@@ -447,10 +462,6 @@
       <span class="picon"><svg viewBox="0 0 24 24" fill="none"><rect x="2.75" y="6" width="18.5" height="12" rx="4" stroke="currentColor" stroke-width="1.4"/><path d="M10.3 9.6v4.8l4.4-2.4-4.4-2.4Z" fill="currentColor"/></svg></span>
       <span class="pname">YouTube</span>
     </a>
-    <button type="button" class="platform-row" id="shareInstagram" data-platform="instagram">
-      <span class="picon"><svg viewBox="0 0 24 24" fill="none"><rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg></span>
-      <span class="pname">Share to Instagram</span>
-    </button>
   </div>
 </div>
 
@@ -468,6 +479,10 @@
       <p class="popup-micro">(Direct transmission. No spam. Text STOP anytime.)</p>
     </form>
     <p class="popup-thanks">You're in. Watch your messages &mdash; the next transmission is coming.</p>
+    <button type="button" class="popup-share" id="shareInstagram">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>
+      Share the Portal on Instagram
+    </button>
   </div>
 </div>
 
@@ -737,7 +752,7 @@
   var popupClose = document.getElementById('popupClose');
   var platformClicked = false;
 
-  var platformRows = document.querySelectorAll('a.platform-row');
+  var platformRows = document.querySelectorAll('.platform-row');
   for (var i = 0; i < platformRows.length; i++) {
     platformRows[i].addEventListener('click', function(){
       platformClicked = true;
@@ -786,24 +801,30 @@
       body: JSON.stringify({ phone: phone })
     }).catch(function(){});
 
+    // Stays open (no auto-close) so the share button below the thanks
+    // message is still there to tap.
     returnPopup.classList.add('submitted');
-    setTimeout(closePopup, 2600);
   });
 
   // ---- share to Instagram ----
-  // Instagram has no web share URL (no equivalent of Facebook's sharer.php),
-  // so the only no-approval route is the Web Share API: on phones it opens
-  // the OS share sheet with the image attached, and Instagram (Stories,
-  // Feed, DMs) appears there as a target. The image is fetched up front
-  // because Safari only allows navigator.share() inside the tap itself --
-  // awaiting a fetch first would burn the user activation and the share
-  // would be rejected. Desktop browsers can't hand files to Instagram at
-  // all, so there we save the image and copy the link instead.
-  var SHARE_IMAGE_SRC = 'assets/fallback.jpg';
-  var SHARE_FILENAME = 'soundtrack-to-awakening.jpg';
+  // Lives in the return popup: the visitor has just listened, which is
+  // when they're most likely to pass it on. Instagram has no web share URL
+  // (no equivalent of Facebook's sharer.php), so the only no-approval
+  // route is the Web Share API: on phones it opens the OS share sheet with
+  // a file attached, and Instagram (Stories/Reels/Feed/DMs) is a target.
+  // We share the portal loop itself (vertical 9:16, silent, so it drops
+  // straight into a Story and people can add their own music), falling
+  // back to the still where video file sharing isn't supported. Files are
+  // fetched up front because Safari only allows navigator.share() inside
+  // the tap itself -- awaiting a fetch first would burn the user
+  // activation and the share would be rejected. Desktop browsers can't
+  // hand files to Instagram at all, so there we save the video and copy
+  // the link instead.
+  var SHARE_VIDEO = { src: 'assets/portal-loop.mp4', name: 'soundtrack-to-awakening.mp4', type: 'video/mp4' };
+  var SHARE_IMAGE = { src: 'assets/fallback.jpg', name: 'soundtrack-to-awakening.jpg', type: 'image/jpeg' };
   var shareButton = document.getElementById('shareInstagram');
   var shareToast = document.getElementById('shareToast');
-  var shareFile = null;
+  var shareFiles = {};
   var toastTimer = null;
 
   function shareUrl(){
@@ -819,13 +840,23 @@
     }, 4200);
   }
 
-  if (window.fetch && typeof File === 'function') {
-    fetch(SHARE_IMAGE_SRC)
+  function prefetchShareFile(asset){
+    if (!window.fetch || typeof File !== 'function') return;
+    fetch(asset.src)
       .then(function(res){ return res.ok ? res.blob() : null; })
       .then(function(blob){
-        if (blob) shareFile = new File([blob], SHARE_FILENAME, { type: 'image/jpeg' });
+        if (blob) shareFiles[asset.src] = new File([blob], asset.name, { type: asset.type });
       })
       .catch(function(){});
+  }
+  prefetchShareFile(SHARE_VIDEO);
+  prefetchShareFile(SHARE_IMAGE);
+
+  function shareableData(asset){
+    var file = shareFiles[asset.src];
+    if (!file || !navigator.canShare) return null;
+    var data = { files: [file], title: 'Soundtrack to Awakening' };
+    return navigator.canShare(data) ? data : null;
   }
 
   function copyLink(){
@@ -838,29 +869,29 @@
     return Promise.resolve(false);
   }
 
-  function saveImageFallback(){
+  function saveFileFallback(){
     var a = document.createElement('a');
-    a.href = SHARE_IMAGE_SRC;
-    a.download = SHARE_FILENAME;
+    a.href = SHARE_VIDEO.src;
+    a.download = SHARE_VIDEO.name;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     copyLink().then(function(copied){
       showToast(copied
-        ? 'Image saved & link copied \u2014 post it from Instagram on your phone.'
-        : 'Image saved \u2014 post it from Instagram on your phone.');
+        ? 'Video saved & link copied \u2014 post it from Instagram on your phone.'
+        : 'Video saved \u2014 post it from Instagram on your phone.');
     });
   }
 
   shareButton.addEventListener('click', function(){
-    var data = shareFile ? { files: [shareFile], title: 'Soundtrack to Awakening' } : null;
-    if (data && navigator.canShare && navigator.canShare(data)) {
+    var data = shareableData(SHARE_VIDEO) || shareableData(SHARE_IMAGE);
+    if (data) {
       navigator.share(data).catch(function(err){
         // AbortError = the visitor closed the share sheet; nothing to do.
-        if (err && err.name !== 'AbortError') saveImageFallback();
+        if (err && err.name !== 'AbortError') saveFileFallback();
       });
     } else {
-      saveImageFallback();
+      saveFileFallback();
     }
   });
 
