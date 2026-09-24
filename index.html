@@ -198,6 +198,39 @@
     transition:opacity 500ms ease;
   }
   #scene-portal.bursting .tap-hint{ opacity:0; animation:none; }
+  /* Landing share button. Sits above the burst canvas but below the
+     blackout, and fades out with the tap hint once the transition starts. */
+  .landing-share{
+    position:absolute;
+    left:50%;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 28px);
+    transform:translateX(-50%);
+    z-index:7;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:10px 18px;
+    white-space:nowrap;
+    border-radius:999px;
+    border:1px solid rgba(232,185,106,0.4);
+    background:rgba(0,0,0,0.45);
+    backdrop-filter:blur(6px);
+    color:#f0c878;
+    font-family:'Jost', sans-serif;
+    font-size:13px;
+    font-weight:500;
+    letter-spacing:0.02em;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:opacity 500ms ease, border-color 200ms ease, background 200ms ease;
+  }
+  .landing-share:hover, .landing-share:focus-visible{
+    border-color:rgba(232,185,106,0.7);
+    background:rgba(0,0,0,0.6);
+    outline:none;
+  }
+  .landing-share svg{ width:16px; height:16px; flex:none; }
+  #scene-portal.bursting .landing-share{ opacity:0; pointer-events:none; }
   @keyframes hintPulse{
     0%,100%{ opacity:0.6; }
     50%{ opacity:1; }
@@ -450,6 +483,10 @@
   <div class="portal-scrim"></div>
   <canvas id="burstCanvas"></canvas>
   <div class="tap-hint">Tap to Awaken</div>
+  <button type="button" class="landing-share js-share-ig">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>
+    Share to Instagram
+  </button>
 </div>
 
 <div class="scene" id="scene-links">
@@ -479,7 +516,7 @@
       <p class="popup-micro">(Direct transmission. No spam. Text STOP anytime.)</p>
     </form>
     <p class="popup-thanks">You're in. Watch your messages &mdash; the next transmission is coming.</p>
-    <button type="button" class="popup-share" id="shareInstagram">
+    <button type="button" class="popup-share js-share-ig">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>
       Share the Portal on Instagram
     </button>
@@ -807,8 +844,8 @@
   });
 
   // ---- share to Instagram ----
-  // Lives in the return popup: the visitor has just listened, which is
-  // when they're most likely to pass it on. Instagram has no web share URL
+  // Offered twice: at the bottom of the landing screen, and again in the
+  // return popup once the visitor has actually listened. Instagram has no web share URL
   // (no equivalent of Facebook's sharer.php), so the only no-approval
   // route is the Web Share API: on phones it opens the OS share sheet with
   // a file attached, and Instagram (Stories/Reels/Feed/DMs) is a target.
@@ -822,7 +859,7 @@
   // the link instead.
   var SHARE_VIDEO = { src: 'assets/portal-loop.mp4', name: 'soundtrack-to-awakening.mp4', type: 'video/mp4' };
   var SHARE_IMAGE = { src: 'assets/fallback.jpg', name: 'soundtrack-to-awakening.jpg', type: 'image/jpeg' };
-  var shareButton = document.getElementById('shareInstagram');
+  var shareButtons = document.querySelectorAll('.js-share-ig');
   var shareToast = document.getElementById('shareToast');
   var shareFiles = {};
   var toastTimer = null;
@@ -883,7 +920,10 @@
     });
   }
 
-  shareButton.addEventListener('click', function(){
+  function onShareClick(e){
+    // The landing button sits inside the portal scene, whose own click
+    // handler starts the transition -- keep the share tap from reaching it.
+    e.stopPropagation();
     var data = shareableData(SHARE_VIDEO) || shareableData(SHARE_IMAGE);
     if (data) {
       navigator.share(data).catch(function(err){
@@ -893,7 +933,10 @@
     } else {
       saveFileFallback();
     }
-  });
+  }
+  for (var j = 0; j < shareButtons.length; j++) {
+    shareButtons[j].addEventListener('click', onShareClick);
+  }
 
   sizeCanvas();
 })();
